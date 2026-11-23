@@ -24,7 +24,7 @@ This document records key design decisions made during the development of the x/
 
 ## Decision 2: Lazy Settlement vs Per-Block Processing
 
-**Decision:** Settle leases lazily during write operations (withdrawal, close) rather than every block.
+**Decision:** Settle accrual lazily during write operations (withdrawal, acknowledgement, close) rather than every block.
 
 **Alternatives Considered:**
 1. EndBlocker settlement of all leases
@@ -32,18 +32,20 @@ This document records key design decisions made during the development of the x/
 3. Lazy settlement on write operations (chosen)
 
 **Rationale:**
-- **Chain Performance:** No EndBlocker overhead regardless of lease count
-- **Scalability:** Supports millions of leases without block time impact
+- **Chain Performance:** No accrual is computed and no payment is made in the EndBlocker, regardless of lease count
+- **Scalability:** Lease count has no impact on block time
 - **Gas Efficiency:** Settlement cost paid by user who triggers it
-- **Simplicity:** No background job management
+- **Simplicity:** No per-block accrual bookkeeping
 
 **Trade-offs:**
-- Lease state queries (`Lease`, `Leases`, `LeasesByTenant`, `LeasesByProvider`) return stored state
-- Use `WithdrawableAmount` or `ProviderWithdrawable` queries for real-time accrued amounts
-- Auto-close only happens during write operations (CloseLease, Withdraw)
+- Queries return stored state
+- Use the `ProviderWithdrawable` query for real-time accrued amounts, or `StreamsByProvider` / `StreamsByTenant` for the stored streams
+- Credit exhaustion is only discovered by a write operation that settles the stream (Withdraw, AcknowledgeLease, CloseLease). Until then the leases stay ACTIVE even if the credit has run out
 - Provider withdrawal requires explicit action
 
 **Implementation Note:** Queries do NOT trigger settlement or auto-close. This is intentional to ensure state changes are properly committed during transactions.
+
+**See also [Decision 20](#decision-20-settlement-streams-instead-of-per-lease-settlement):** what is settled lazily is a stream (one per provider, tenant and denom), not an individual lease. The EndBlocker takes part in billing in one bounded way: it closes the leases of streams that a settlement found exhausted, with a per-block cap. It never discovers exhaustion or settles a stream on its own initiative.
 
 ## Decision 3: Derived Credit Account Addresses
 
@@ -111,12 +113,12 @@ See `x/billing/types/credit.go` for the implementation.
 - **User Experience:** Single lease for complete infrastructure
 - **Atomic Operations:** All items start/stop together
 - **Fewer Objects:** Less storage overhead
-- **Cleaner Billing:** Single settlement per lease
+- **Cleaner Billing:** All items of a lease start and stop accruing together
 
 **Trade-offs:**
 - More complex lease structure
 - Cannot close individual items
-- Settlement must iterate all items
+- A lease's per-second rate must be summed over its items, per denom, when it joins or leaves a settlement stream (settlement itself does not read lease items)
 - All items must be from the same provider
 
 ## Decision 6: Single Provider Per Lease
@@ -196,13 +198,13 @@ See `x/billing/types/credit.go` for the implementation.
 - Each SKU's `base_price` is a `Coin` with its own denom
 - Lease items store `locked_price` as `Coin` (preserving denom)
 - Credit validation checks each denom separately
-- Settlement transfers happen per-denom
+- Settlement is per denom: a lease belongs to one settlement stream per denom it is priced in, and each stream is settled and transferred on its own
 - Credit accounts are regular bank accounts that can hold any denom
 - No send restrictions on credit accounts (any token can be sent)
 
 **Trade-offs:**
 - Lease creation validation more complex (check each denom)
-- Settlement must aggregate and transfer per-denom
+- A tenant's credit can be exhausted in one denom and not in another; a lease priced in the exhausted denom is closed even if its other denom is funded
 - Users must fund credit with correct denoms for their desired SKUs
 - No automatic denom conversion
 
@@ -314,7 +316,7 @@ Item 2: SKU 2 (priced in 'umfx') - locked_price: 500umfx/second
 
 `pending_timeout` is the only param with a lower bound: 0 is rejected by the minimum check (`MinPendingTimeout` = 60s), not a separate zero check.
 
-The provider withdraw batch limits are **not** governance parameters — they are compile-time constants (`DefaultProviderWithdrawLimit` = 50, `MaxBatchLeaseSize` = 100) and require a binary release to change, not a param update.
+The provider withdraw batch limits (counted in streams) and the EndBlocker auto-close cap are **not** governance parameters — they are compile-time constants (`DefaultProviderWithdrawLimit` = 50, `MaxBatchLeaseSize` = 100, `MaxAutoClosesPerBlock` = 100) and require a binary release to change, not a param update.
 
 ## Decision 14: Minimum Lease Duration
 
@@ -460,6 +462,68 @@ on the lease so the reservation can be released consistently later.
 - **Multi-Item Legacy Leases Cannot Host a Custom Domain:** A multi-item lease created in legacy mode (no `service_name`) has no unambiguous way to address an item, so it is rejected from setting a `custom_domain` (`ErrAmbiguousLeaseItem`).
 - **`reserved_domain_suffixes` Ships Empty:** `Params.ReservedDomainSuffixes` defaults to `nil` on purpose and `Migrate1to2` is a no-op. Once a hostname is baked into a release tag it cannot be unshipped from chains that already ran the upgrade, so operators seed provider wildcard zones via genesis or post-upgrade `MsgUpdateParams` instead. (ENG-82 tracks provider-declared zones in `x/sku`.)
 
+## Decision 20: Settlement Streams Instead of Per-Lease Settlement
+
+**Decision:** Settle accrual per **stream**, one aggregate per `(provider_uuid, tenant, denom)`, instead of per lease. A stream holds the summed per-second rate of the ACTIVE leases the tenant has with the provider in that denom and a single `last_settled_at`. Credit exhaustion freezes the stream; the EndBlocker closes its leases.
+
+**Context:**
+
+Settlement used to be per lease. Every lease carried its own `last_settled_at`, and `MsgWithdraw` did, for each lease, one accrual calculation over its items, one bank transfer and one lease rewrite. That cost about 93k gas per lease, so about 9.3M gas for a full page of 100 leases, and a provider's withdrawal fee grew linearly with its lease count (ENG-473). The largest mainnet provider had 382 leases at the time.
+
+The cost grew with leases because the lease was the unit of accounting: nothing could be paid without reading and rewriting each lease, and a lease is stored in an `IndexedMap` whose index entries are rewritten with it. Yet the leases of one tenant with one provider in one denom draw on the same credit balance and pay the same payout address, so paying them one by one moved the same money in many small steps.
+
+**Alternatives Considered:**
+1. **Keep per-lease settlement and make it cheaper** — for example, batch the bank transfers per tenant and write leases without touching their indexes. Rejected: each lease must still be read and rewritten to advance its `last_settled_at`, so the cost stays linear in leases. It lowers the slope without removing the growth.
+2. **Streams per (provider, tenant, denom)** (chosen) — keep a running aggregate per pair that shares a credit balance and a payout address, and settle that. Cost is linear in streams.
+3. **Pooled module escrow with O(1) settlement per provider** — keep one accumulator per provider, fed from a module-held pool, so a withdrawal is a single transfer. Rejected: a single per-provider rate cannot respect each tenant's own credit limit. Each tenant's payments are capped by its own balance, and tenants run out at different times, which a provider-wide aggregate cannot see without iterating tenants. Making it O(1) means either paying providers from a pool that some tenants have stopped funding, or moving credit into the pool ahead of time and giving up per-tenant credit accounts held as plain bank balances (Decision 3), plus new accounting to keep the pool solvent.
+
+**Rationale:**
+- **The stream is the smallest unit that still has one balance.** Within a `(provider, tenant, denom)` there is one credit balance to cap against and one payout address, so one transfer is exact. Aggregating further would mix balances; aggregating less repeats work.
+- **Cost follows counterparties, not leases.** A withdrawal costs about 54k gas for a stream whether it aggregates 1, 50 or 382 leases. A tenant can add leases with a provider without making that provider's withdrawals dearer.
+- **Established idiom.** This is the Cosmos SDK F1 fee-distribution approach: maintain an aggregate lazily when positions change, and pay on withdrawal, rather than iterating positions. A lease joining or leaving a stream is the "position change" that settles the stream at the old rate first.
+- **Exact accrual with a carried remainder.** A stream is shared, so it is settled whenever any of its leases changes, at arbitrary instants. Accrual is therefore computed to the nanosecond (`remainder + rate × elapsed nanoseconds`), paid in whole units of the denom, and the rest is carried in the stream's `remainder`. `last_settled_at` always moves to the settlement time. Nothing is dropped however often the stream is settled, and a lease that joins mid-second is never charged for time before it joined; on a whole-second grid it could be billed up to one second early.
+- **No new trust or custody model.** Funds stay in per-tenant credit accounts until a settlement pays the provider directly. There is no pool and no debt.
+- **Bounded, unmetered work stays out of transactions.** Closing the leases of an exhausted tenant is not paid by whoever happened to trigger the settlement. It is queued and drained in the EndBlocker with a per-block cap, the pattern x/feegrant uses to prune expired allowances.
+
+**Trade-offs (consequences):**
+- **Closures on credit exhaustion are deferred to the EndBlocker.** The settlement that finds `accrued >= balance` pays what is left, freezes the stream and emits `stream_exhausted`. The leases are closed by the EndBlocker, at most `MaxAutoClosesPerBlock` (100) per block. Fairness is an equal share within a block and rotation across blocks: every stream served in a block first gets an equal share of the budget, then what is left is spent in queue order; and when more streams are queued than one block can serve, the next block resumes after the last stream served. Both are needed because a frozen stream can keep receiving newly acknowledged leases: without the first, one stream could absorb a block's budget; without the second, the head of a long queue could absorb every block's and the streams behind would never be served. A large stream, or many frozen streams at once, take several blocks to drain. `lease_auto_closed` becomes a block event rather than a transaction event.
+- **A top-up after a stream froze does not save its leases.** A frozen stream stops accruing and is never unfrozen. Credit added after the freeze is not spent on it and its leases are still closed; a lease acknowledged into a frozen stream is closed with it. A top-up before the settlement that would freeze the stream still works as before. Once the stream is drained, new leases start a fresh stream.
+- **Per-lease withdraw and per-lease withdrawable amount no longer exist.** `MsgWithdraw.lease_uuids` is rejected (use `provider_uuid`), `Query/WithdrawableAmount` returns `Unimplemented` (use `ProviderWithdrawable` or `StreamsByProvider`), `Lease.last_settled_at` is never set, and the `provider_withdraw` event is gone. A provider cannot withdraw from one lease and leave the tenant's other leases unsettled.
+- **`closed_at` is the block time of the closing block.** A lease closed for exhausted credit is stamped with the time of the block in which the EndBlocker (or a `MsgCloseLease`) closed it, not the instant the credit ran out. The tenant is not charged for the gap, because a frozen stream accrues nothing.
+- **Amounts are reported per stream.** `MsgCloseLease`'s `total_settled_amounts` is what the touched streams paid: closing 1 of N leases of a stream pays the accrual of all N. `lease_closed` no longer carries `settled_amounts` or `duration_seconds`.
+- **A second source of truth to keep consistent.** Streams duplicate information derivable from the ACTIVE leases. The invariant (`rate` and `lease_count` equal the sums over ACTIVE leases; a stream exists if and only if it has a lease) is checked by `CheckStreamInvariant` at genesis import and after the store migration, and genesis must carry streams that match its leases (`InitGenesis` runs `GenesisState.ValidateStreams` itself before restoring them).
+- **A multi-denom lease belongs to several streams.** A lease priced in two denoms is closed when either of its streams is exhausted, as it was under per-lease settlement when either denom ran out. Leases of the same tenant that are not priced in the exhausted denom are not affected.
+
+**Implementation:**
+- State: `Streams` (prefix 13), `StreamsByTenant` (14), `StreamLeases` (15), `ExhaustedStreams` (16), `ExhaustedStreamsStart` (17, the drain's rotation key). See [Architecture](ARCHITECTURE.md#storage-layout).
+- A per-message stream cache settles and writes each touched stream once, so acknowledging or closing many leases of one stream does one transfer.
+- Deprecated protobuf surface is kept and rejected explicitly rather than deleted, per ADR-044, so existing clients get an error that names the replacement instead of a decoding or missing-method failure.
+- The store migration lives in `x/billing/migrations/v3`, per ADR-041, and the module's `ConsensusVersion` goes from 2 to 3. It moves no coins: it creates the streams, records what each stream's leases had accrued and not yet been paid as the stream's `arrears`, and clears `last_settled_at` (see [Decision 21](#decision-21-unpaid-amounts-are-state-arrears-and-the-migration-moves-no-coins)). See [Migration Guide](MIGRATION.md#store-migration-2--3-settlement-streams).
+
+## Decision 21: Unpaid Amounts Are State (Arrears), and the Migration Moves No Coins
+
+**Decision:** An amount a stream owes on top of its accrual is stored as an explicit field, `StreamState.arrears`, in whole units of the denom. The 2 → 3 store migration pays nobody: it records what each stream's leases had accrued under per-lease settlement and not yet been paid as the stream's `arrears`. The stream's first settlement after the upgrade pays the arrears with the accrual, through the normal path.
+
+**Alternatives Considered:**
+1. Pay at the upgrade, and keep arrears only for payments that fail
+2. Back-date the stream's `last_settled_at` by `owed / rate` so that it accrues the debt again
+3. Scale the debt into `remainder` (`owed × 1,000,000,000`)
+4. Explicit arrears, and a migration that moves no coins (chosen)
+
+**Rationale:**
+- **Encoding a debt into accrual fields kept producing defects.** Three review rounds each found one. A debt scaled by 10⁹ into `remainder` overflowed for large debts. Back-dating by `owed / rate` lost amounts smaller than the rate, and broke when the debt came from CLOSED leases, which the stream's rate does not include.
+- **An explicit amount is exact for any size and any rate.** What a stream owes is `arrears + floor((remainder + rate × elapsed) / 10⁹)`, and `remainder` keeps a single meaning: always less than one unit.
+- **One path instead of two.** Paying at the upgrade would make the outcome of the migration depend on bank transfers, which can fail, and what could not be paid would need a second path. Keeping the debt as state needs only one: the ordinary settlement, with its events and its credit-exhaustion rule.
+- **Nothing is paid later than before.** Under per-lease settlement that accrual was also only paid when the provider withdrew.
+- **Precedent.** Sablier Flow computes a stream's total debt as a snapshot debt plus an ongoing debt (rate × time since the snapshot). The Cosmos SDK's x/distribution keeps outstanding rewards as state until they are withdrawn.
+
+**Trade-offs:**
+- One more field on every stream, zero outside the migration
+- Providers are not paid at the upgrade height; their first withdrawal after it includes the pre-upgrade accrual
+- A tenant that cannot cover what it owed is not frozen at the upgrade but at its stream's first settlement; when it owes several providers more than it holds, whoever settles first is paid first
+- If the credit does not cover the arrears, the settlement pays the whole balance and freezes the stream; the unpaid part is not kept on the frozen stream
+- Unpaid accrual of CLOSED leases with no ACTIVE lease in the same (provider, tenant, denom) has no stream to carry it and is only logged. Handlers always settle a lease up to its closure, so this needs a hand-written genesis
+
 ## Future Considerations
 
 ### Potential Future Enhancements
@@ -480,11 +544,11 @@ on the lease so the reservation can be released consistently later.
 
 1. **No Partial Credit Withdrawal:** Credits locked until spent
 2. **No Dispute Mechanism:** Trust-based provider relationship  
-3. **No Grace Period:** Immediate closure on exhaustion
+3. **No Grace Period:** Once a settlement finds the credit exhausted, the stream is frozen and its leases are closed by the EndBlocker; a later top-up does not save them
 4. **No Lease Modification:** Cannot add/remove items after creation
-5. **Linear Provider Withdraw:** O(n) for many leases (capped at 100)
+5. **Provider Withdraw Linear in Streams:** O(n) in the provider's streams (tenant and denom pairs), paginated at up to 100 per call. It no longer depends on the number of leases
 6. **Single Provider Per Lease:** Cannot mix providers in one lease
-7. **Lease Queries Return Stored State:** `Lease`, `Leases`, etc. return stored `last_settled_at` (use `WithdrawableAmount` for real-time)
+7. **Queries Return Stored State:** Lease and stream queries return stored state; a stream's `last_settled_at` only moves when a transaction settles it (use `ProviderWithdrawable` for real-time accrued amounts). There is no per-lease accrued amount
 8. **No Denom Conversion:** Must fund credit with exact denoms required by target SKUs
 9. **PENDING Lease Timeout:** Fixed timeout for all providers (governance parameter)
 10. **Closed Lease State Bloat:** Soft-deleted leases (CLOSED, REJECTED, EXPIRED) remain in state indefinitely. High-volume deployments will accumulate state over time. See "Lease Pruning" in Future Considerations for the planned mitigation.
@@ -494,7 +558,7 @@ on the lease so the reservation can be released consistently later.
 ### Migration Considerations
 
 When implementing breaking changes:
-- Settle all active leases before migration
+- Carry over what is owed when changing how accrual is tracked, as explicit state rather than by paying inside the migration (the 2 → 3 migration records every lease's unpaid accrual as its stream's `arrears` and moves no coins)
 - Preserve credit account balances
 - Maintain lease history
 - Update indexes atomically

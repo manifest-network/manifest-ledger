@@ -181,34 +181,23 @@ func (m *MsgCloseLease) ValidateBasic() error {
 }
 
 // ValidateBasic performs basic validation for MsgWithdraw.
-// Supports two mutually exclusive modes:
-// 1. Specific leases: lease_uuids must be set
-// 2. Provider-wide: provider_uuid must be set
+// A withdrawal settles the streams of one provider, so provider_uuid is
+// required; the deprecated lease_uuids must be empty.
 func (m *MsgWithdraw) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(m.Sender); err != nil {
 		return ErrUnauthorized.Wrapf("invalid sender address: %s", err)
 	}
 
-	// Check for mutually exclusive modes
-	hasLeases := len(m.LeaseUuids) > 0
-	hasProvider := m.ProviderUuid != ""
-
-	if hasLeases && hasProvider {
-		return ErrInvalidRequest.Wrap("cannot specify both lease_uuids and provider_uuid")
+	// lease_uuids is deprecated: settlement is per stream, so a lease can no
+	// longer be withdrawn on its own. Reject it with an error that names the
+	// replacement instead of silently ignoring it (ADR-044).
+	if len(m.LeaseUuids) > 0 { //nolint:staticcheck // the deprecated field must be read to be rejected
+		return ErrInvalidRequest.Wrap("lease_uuids is no longer supported: withdrawals settle per stream, use provider_uuid")
 	}
-	if !hasLeases && !hasProvider {
-		return ErrInvalidRequest.Wrap("must specify either lease_uuids or provider_uuid")
-	}
-
-	// Mode 1: Specific leases
-	if hasLeases {
-		if len(m.Key) > 0 {
-			return ErrInvalidRequest.Wrap("key (pagination cursor) is only valid in provider-wide mode")
-		}
-		return ValidateBatchLeaseUUIDs(m.LeaseUuids)
+	if m.ProviderUuid == "" {
+		return ErrInvalidRequest.Wrap("provider_uuid is required")
 	}
 
-	// Mode 2: Provider-wide
 	if !pkguuid.IsValidUUID(m.ProviderUuid) {
 		return ErrProviderNotFound.Wrapf("invalid provider_uuid format: %s", m.ProviderUuid)
 	}
@@ -238,9 +227,10 @@ func (m *MsgUpdateParams) ValidateBasic() error {
 // MaxBatchLeaseSize is the maximum number of leases that can be processed in a single batch operation.
 const MaxBatchLeaseSize = 100
 
-// MaxWithdrawCursorLen bounds the opaque provider-wide withdrawal cursor
-// (a lease UUID is 36 bytes) as a cheap sanity/DoS guard.
-const MaxWithdrawCursorLen = 64
+// MaxWithdrawCursorLen bounds the opaque withdrawal cursor as a cheap
+// sanity/DoS guard. The cursor encodes a (tenant, denom) pair: a
+// length-prefixed address (at most 255 bytes) and a denom (at most 127 bytes).
+const MaxWithdrawCursorLen = 512
 
 // ValidateBatchLeaseUUIDs validates a slice of lease UUIDs for batch operations.
 // It checks for empty slice, max batch size, UUID format validity, and duplicates.

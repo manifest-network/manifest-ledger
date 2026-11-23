@@ -223,11 +223,11 @@ message MsgCloseLeaseResponse {
   ];
 }
 
-// MsgWithdraw allows a provider to withdraw from leases.
-// Two mutually exclusive modes:
-// 1. Specific leases: provide lease_uuids (1-100 UUIDs)
-// 2. Provider-wide: provide provider_uuid for paginated withdrawal from all leases
-// This is an atomic operation: all withdrawals succeed or all fail.
+// MsgWithdraw allows a provider to withdraw what its settlement streams have
+// accrued. Accrual is settled per (provider, tenant, denom) stream, so the
+// cost depends on the number of streams, not the number of leases.
+// Withdrawal is paginated over the provider's streams; each stream settles
+// independently, and a stream that fails to settle is skipped.
 message MsgWithdraw {
   option (cosmos.msg.v1.signer) = "sender";
   option (amino.name) = "lifted/billing/MsgWithdraw";
@@ -238,30 +238,33 @@ message MsgWithdraw {
     (gogoproto.jsontag) = "sender,omitempty"
   ];
 
-  // lease_uuids are the UUIDs of the leases to withdraw from (1-100).
-  // Mutually exclusive with provider_uuid.
-  repeated string lease_uuids = 2 [(gogoproto.jsontag) = "lease_uuids,omitempty"];
+  // lease_uuids selected individual leases to withdraw from.
+  //
+  // Deprecated: settlement is per stream, so a single lease can no longer be
+  // withdrawn on its own. A message with a non-empty lease_uuids is rejected;
+  // use provider_uuid.
+  repeated string lease_uuids = 2 [
+    deprecated = true,
+    (gogoproto.jsontag) = "lease_uuids,omitempty"
+  ];
 
-  // provider_uuid enables provider-wide withdrawal mode.
-  // When set, withdraws from all active leases for this provider with pagination.
-  // Mutually exclusive with lease_uuids.
+  // provider_uuid is the UUID of the provider whose streams are withdrawn.
+  // Required.
   string provider_uuid = 3 [(gogoproto.jsontag) = "provider_uuid,omitempty"];
 
-  // limit is the maximum number of leases to process in provider-wide mode.
+  // limit is the maximum number of streams to settle in this message.
   // When 0, defaults to 50. Maximum allowed is 100.
-  // Ignored when lease_uuids is specified.
   uint64 limit = 4 [(gogoproto.jsontag) = "limit,omitempty,string"];
 
-  // key is an opaque pagination cursor for provider-wide mode. Echo back the
-  // next_key returned by the previous MsgWithdrawResponse to continue paging;
-  // empty starts from the beginning. Must not be set when lease_uuids is
-  // specified (rejected by ValidateBasic).
+  // key is an opaque pagination cursor. Echo back the next_key returned by the
+  // previous MsgWithdrawResponse to continue paging; empty starts from the
+  // beginning.
   bytes key = 5 [(gogoproto.jsontag) = "key,omitempty"];
 }
 
 // MsgWithdrawResponse is the response type for MsgWithdraw.
 message MsgWithdrawResponse {
-  // total_amounts is the total amounts withdrawn across all leases (one per denom).
+  // total_amounts is the total amounts withdrawn across the settled streams (one per denom).
   repeated cosmos.base.v1beta1.Coin total_amounts = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins",
@@ -274,17 +277,15 @@ message MsgWithdrawResponse {
     (gogoproto.jsontag) = "payout_address,omitempty"
   ];
 
-  // withdrawal_count is the number of leases withdrawn from.
+  // withdrawal_count is the number of streams that paid out.
   uint64 withdrawal_count = 3 [(gogoproto.jsontag) = "withdrawal_count,omitempty,string"];
 
-  // has_more indicates if there are more leases to process in provider-wide mode.
-  // Always false when using lease_uuids mode.
+  // has_more indicates if the provider has more streams to process.
   bool has_more = 4 [(gogoproto.jsontag) = "has_more,omitempty"];
 
   // next_key is the opaque cursor to pass as MsgWithdraw.key to fetch the next
-  // page in provider-wide mode. It is non-empty if and only if has_more is
-  // true; an empty next_key means there are no more leases. Always empty in
-  // lease_uuids mode.
+  // page. It is non-empty if and only if has_more is true; an empty next_key
+  // means there are no more streams.
   bytes next_key = 5 [(gogoproto.jsontag) = "next_key,omitempty"];
 }
 

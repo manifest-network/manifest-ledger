@@ -138,16 +138,39 @@ func testEdgeCasesIndependent(t *testing.T, ctx context.Context, tc *billingTest
 			t.Skip("No closed lease found")
 		}
 
-		// After closure, settlement already happened, so withdrawal should fail
-		// because there's nothing left to withdraw (LastSettledAt == ClosedAt)
-		res, err := helpers.BillingWithdraw(ctx, tc.chain, tc.providerWallet, closedLeaseUUID)
+		// Closing the lease settled its stream up to the closure and, as it was
+		// the tenant's only active lease with the provider, deleted the stream.
+		// A closed lease therefore has nothing left to accrue or to pay.
+		tenantAddr := tc.tenant2.FormattedAddress()
+		active, err := helpers.BillingQueryLeasesByTenant(ctx, tc.chain, tenantAddr, "active")
+		require.NoError(t, err)
+		require.Empty(t, active.Leases, "this check needs the tenant to have no active lease left")
+		stream, err := helpers.BillingQueryStream(ctx, tc.chain, tc.providerUUID, tenantAddr, tc.pwrDenom)
+		require.NoError(t, err)
+		require.Nil(t, stream, "a stream without active leases should be deleted")
+
+		creditBefore, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, tenantAddr)
+		require.NoError(t, err)
+
+		// Let time pass: a closed lease must not accrue after its closure.
+		require.NoError(t, testutil.WaitForBlocks(ctx, 3, tc.chain))
+
+		// The withdrawal itself succeeds (the provider may have other streams),
+		// but it must not charge the tenant of the closed lease again.
+		res, err := helpers.BillingWithdrawByProvider(ctx, tc.chain, tc.providerWallet, tc.providerUUID, 0)
 		require.NoError(t, err)
 
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		// Should fail because settlement already happened during closure
-		require.NotEqual(t, uint32(0), txRes.Code, "withdraw after closure should fail (already settled)")
-		require.Contains(t, txRes.RawLog, "no withdrawable amount")
+		require.Equal(t, uint32(0), txRes.Code, "withdraw after closure should succeed: %s", txRes.RawLog)
+
+		_, charged := helpers.FindEvent(txRes.Events, billingtypes.EventTypeStreamSettled, billingtypes.AttributeKeyTenant, tenantAddr)
+		require.False(t, charged, "withdraw after closure must not settle the closed lease again")
+
+		creditAfter, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, tenantAddr)
+		require.NoError(t, err)
+		require.True(t, creditBefore.Balances.Equal(creditAfter.Balances),
+			"tenant credit changed from %s to %s after its only lease was closed", creditBefore.Balances, creditAfter.Balances)
 	})
 }
 

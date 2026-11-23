@@ -124,20 +124,20 @@ manifestd tx billing reject-lease    <LEASE_UUID> --reason "out of capacity" --f
 
 # 5. Provision off-chain. Tenants authenticate to your API per docs/INTEGRATION.md (ADR-036).
 
-# 6. Withdraw accrued credit. Two modes: specific lease(s), or paginated provider-wide.
-manifestd tx billing withdraw <LEASE_UUID> --from <PROVIDER_KEY>
+# 6. Withdraw accrued credit. Accrual is settled per stream — one per (provider, tenant, denom) —
+#    so the cost depends on how many tenants you serve, not how many leases they hold.
 manifestd tx billing withdraw --provider <PROVIDER_UUID> --limit 100 --from <PROVIDER_KEY>
-# Provider-wide mode pages — repeat while `has_more: true` in the response.
+# Withdrawals page over your streams — while `has_more: true`, repeat with `--key <next_key>`.
 
-# 7. Check what's currently withdrawable without claiming it:
+# 7. Check what's currently withdrawable without claiming it, and inspect your streams:
 manifestd query billing provider-withdrawable <PROVIDER_UUID>
-manifestd query billing withdrawable <LEASE_UUID>
+manifestd query billing streams-by-provider <PROVIDER_UUID>
 
 # 8. Close a lease when service ends (provider, tenant, or authority can close ACTIVE leases):
 manifestd tx billing close-lease <LEASE_UUID> --reason "service ended" --from <PROVIDER_KEY>
 ```
 
-**Auto-close behaviour:** if a tenant's credit runs out, the next `withdraw` or `close-lease` against the lease performs the final settlement (against whatever balance remains) and auto-closes it. You don't need to poll.
+**Auto-close behaviour:** if a tenant's credit runs out, the next `withdraw` (or `close-lease`) that settles their stream pays you whatever balance remains and freezes the stream. The chain then closes that stream's leases itself at the end of the block (up to 100 per block) and emits a `lease_auto_closed` block event for each. You don't need to close them.
 
 **Deeper reading:** [`x/sku/docs/PROVIDER_GUIDE.md`](./x/sku/docs/PROVIDER_GUIDE.md), [`x/sku/docs/SKU_GUIDE.md`](./x/sku/docs/SKU_GUIDE.md), [`x/billing/docs/INTEGRATION.md`](./x/billing/docs/INTEGRATION.md).
 

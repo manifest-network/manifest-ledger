@@ -5,10 +5,13 @@ package interchaintest
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"testing"
+	"time"
 
 	sdkmath "cosmossdk.io/math"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/strangelove-ventures/interchaintest/v8"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
 	"github.com/strangelove-ventures/interchaintest/v8/testutil"
@@ -254,6 +257,12 @@ func testCreateLeaseForTenantIndependent(t *testing.T, ctx context.Context, tc *
 }
 
 // testAutoCloseMechanismIndependent tests the lazy auto-close mechanism.
+//
+// Settlement is lazy and per stream: nothing happens when a tenant's credit
+// runs out until a settlement touches its stream. A withdrawal that finds the
+// credit exhausted pays the provider what is left and freezes the stream; the
+// EndBlocker of that same block then closes the stream's leases. An explicit
+// close of such a lease settles and closes it within the transaction instead.
 func testAutoCloseMechanismIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
 	t.Log("=== Testing Auto-Close Mechanism ===")
 
@@ -330,63 +339,130 @@ func testAutoCloseMechanismIndependent(t *testing.T, ctx context.Context, tc *bi
 	require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, acLease.Lease.GetState(), "lease should be active")
 	t.Logf("Lease items: %+v", acLease.Lease.Items)
 
-	t.Run("success: lease auto-closes when credit exhausted during withdrawal", func(t *testing.T) {
-		// Check provider balance before auto-close
-		providerBalance, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
+	// The tenant's credit is consumed creditSeconds after its stream was last
+	// settled: 15,000 credit at 1,000 per second.
+	const (
+		autoCloseCredit      = int64(15_000)
+		autoCloseRate        = int64(1_000)
+		autoCloseMinDuration = int64(10)
+		creditSeconds        = autoCloseCredit / autoCloseRate
+	)
+	autoCloseTenantAddr := autoCloseTenant.FormattedAddress()
+
+	// The withdrawal that froze the tenant's stream; set by the first subtest
+	// and inspected by the next ones.
+	var (
+		freezeTx    *sdk.TxResponse
+		freezeBlock *helpers.BlockInfo
+	)
+
+	t.Run("success: withdrawal freezes an exhausted stream and the EndBlocker closes its lease", func(t *testing.T) {
+		stream, err := helpers.BillingQueryStream(ctx, tc.chain, tc.providerUUID, autoCloseTenantAddr, tc.pwrDenom)
 		require.NoError(t, err)
-		t.Logf("Provider balance BEFORE auto-close: %s", providerBalance.String())
+		require.NotNil(t, stream, "the acknowledged lease should have a stream")
+		require.Equal(t, sdkmath.NewInt(autoCloseRate).String(), stream.State.Rate.String())
+		require.Equal(t, uint64(1), stream.State.LeaseCount)
+		require.False(t, stream.State.IsExhausted())
 
-		// Wait for enough blocks to exhaust credit
-		// With 1000/second rate and 15,000 credit, we need ~15 seconds
-		// Block time is ~1 second, so wait for ~20 blocks to be safe
+		// Wait until the accrual exceeds the credit. This waits on block time,
+		// which is what accrual is computed from, rather than on a number of
+		// blocks, so it does not depend on the block interval.
 		t.Log("Waiting for credit to accrue/exhaust...")
-		require.NoError(t, testutil.WaitForBlocks(ctx, 15, tc.chain))
+		waitForBlockTime(t, ctx, tc.chain, stream.State.LastSettledAt.Add(time.Duration(creditSeconds+1)*time.Second))
 
-		// Check credit balance - should be very low or zero
-		creditRes, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, autoCloseTenant.FormattedAddress())
+		// Settlement is lazy: until something touches the stream, the credit is
+		// still in the tenant's account and the lease is still ACTIVE.
+		creditRes, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, autoCloseTenantAddr)
 		require.NoError(t, err)
 		t.Logf("Credit balance after accrual: %s", creditRes.Balances)
-
-		// Trigger settlement by attempting a withdrawal
-		// This should auto-close the lease due to exhausted credit
-		res, err := helpers.BillingWithdraw(ctx, tc.chain, tc.providerWallet, autoCloseLeaseID)
-		require.NoError(t, err)
-
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		t.Logf("Withdrawal tx result: code=%d, log=%s", txRes.Code, txRes.RawLog)
-
-		// The withdrawal TX should succeed (settlement happens during auto-close)
-		require.Equal(t, uint32(0), txRes.Code, "withdrawal should succeed, auto-close settles the funds")
-
-		// Check provider balance AFTER auto-close - should have received 15000
-		providerBalanceAfter, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
-		require.NoError(t, err)
-		t.Logf("Provider balance AFTER auto-close: %s", providerBalanceAfter.String())
-
-		// Provider should have received the tenant's credit (15000)
-		require.True(t, providerBalanceAfter.GT(sdkmath.NewInt(0)),
-			"provider should have received funds from auto-close settlement")
-
-		// Check credit balance AFTER auto-close - should be 0 or near 0
-		creditResAfter, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, autoCloseTenant.FormattedAddress())
-		require.NoError(t, err)
-		t.Logf("Credit balance AFTER auto-close: %s", creditResAfter.Balances)
-
-		// Credit should be depleted
-		require.True(t, creditResAfter.Balances.IsZero() || creditResAfter.Balances.AmountOf(tc.pwrDenom).LTE(sdkmath.ZeroInt()),
-			"credit balance should be depleted after auto-close")
-
-		// Query lease - should now be inactive due to auto-close
+		require.Equal(t, sdkmath.NewInt(autoCloseCredit).String(), creditRes.Balances.AmountOf(tc.pwrDenom).String(),
+			"nothing is settled before the stream is touched")
+		require.Equal(t, uint64(1), creditRes.CreditAccount.ActiveLeaseCount)
+		require.Equal(t, sdkmath.NewInt(autoCloseRate*autoCloseMinDuration).String(),
+			creditRes.CreditAccount.ReservedAmounts.AmountOf(tc.pwrDenom).String(),
+			"the active lease reserves rate × min_lease_duration")
 		lease, err := helpers.BillingQueryLease(ctx, tc.chain, autoCloseLeaseID)
 		require.NoError(t, err)
-		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState(),
-			"lease should be auto-closed after credit exhaustion")
+		require.Equal(t, billingtypes.LEASE_STATE_ACTIVE, lease.Lease.GetState(), "an untouched exhausted lease stays active")
+
+		providerBalance, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
+		require.NoError(t, err)
+		t.Logf("Provider balance BEFORE the withdrawal: %s", providerBalance.String())
+
+		// Trigger settlement with a withdrawal. It pays the provider what is
+		// left and freezes the stream; it does not close the lease itself.
+		res, err := helpers.BillingWithdrawByProvider(ctx, tc.chain, tc.providerWallet, tc.providerUUID, 0)
+		require.NoError(t, err)
+
+		freezeTx, err = tc.chain.GetTransaction(res.TxHash)
+		require.NoError(t, err)
+		t.Logf("Withdrawal tx result: height=%d, code=%d, log=%s", freezeTx.Height, freezeTx.Code, freezeTx.RawLog)
+		require.Equal(t, uint32(0), freezeTx.Code, "withdrawal should succeed and settle the remaining credit")
+
+		// The tenant's stream paid the provider exactly the whole credit.
+		settled, ok := helpers.FindEvent(freezeTx.Events, billingtypes.EventTypeStreamSettled, billingtypes.AttributeKeyTenant, autoCloseTenantAddr)
+		require.True(t, ok, "the withdrawal should settle the tenant's stream")
+		require.Equal(t, sdk.NewInt64Coin(tc.pwrDenom, autoCloseCredit).String(), settled[billingtypes.AttributeKeyAmount],
+			"an exhausted stream pays the tenant's remaining credit, not rate × seconds")
+		require.Equal(t, tc.providerUUID, settled[billingtypes.AttributeKeyProviderUUID])
+		require.Equal(t, tc.providerWallet.FormattedAddress(), settled[billingtypes.AttributeKeyPayoutAddress])
+
+		batches := helpers.FilterEvents(freezeTx.Events, billingtypes.EventTypeBatchWithdraw)
+		require.Len(t, batches, 1)
+		batchAmount, err := sdk.ParseCoinsNormalized(batches[0][billingtypes.AttributeKeyAmount])
+		require.NoError(t, err)
+
+		providerBalanceAfter, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
+		require.NoError(t, err)
+		t.Logf("Provider balance AFTER the withdrawal: %s", providerBalanceAfter.String())
+		require.Equal(t, batchAmount.AmountOf(tc.pwrDenom).String(), providerBalanceAfter.Sub(providerBalance).String(),
+			"provider should receive exactly what the withdrawal reports")
+		require.True(t, batchAmount.AmountOf(tc.pwrDenom).GTE(sdkmath.NewInt(autoCloseCredit)),
+			"the withdrawal total includes the tenant's whole credit")
+
+		// The credit is fully consumed.
+		creditResAfter, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, autoCloseTenantAddr)
+		require.NoError(t, err)
+		t.Logf("Credit balance AFTER the withdrawal: %s", creditResAfter.Balances)
+		require.True(t, creditResAfter.Balances.AmountOf(tc.pwrDenom).IsZero(),
+			"credit balance should be depleted, got %s", creditResAfter.Balances)
+
+		// The EndBlocker of the withdrawal's own block closed the lease.
+		freezeBlock, err = helpers.GetBlockInfo(ctx, tc.chain, freezeTx.Height)
+		require.NoError(t, err)
+		closedLease := waitForLeaseState(t, ctx, tc.chain, autoCloseLeaseID, billingtypes.LEASE_STATE_CLOSED, 5)
+		require.NotNil(t, closedLease.Lease.ClosedAt, "closed_at should be set for auto-closed lease")
+		require.True(t, closedLease.Lease.ClosedAt.Equal(freezeBlock.Time),
+			"closed_at %s should be the time of the block that froze the stream (%s)", closedLease.Lease.ClosedAt, freezeBlock.Time)
 		t.Log("Lease was auto-closed as expected")
 	})
 
-	t.Run("success: auto-closed lease emits proper events", func(t *testing.T) {
-		// The withdrawal that triggered auto-close should have emitted events
+	t.Run("success: stream freeze and lease auto-close emit proper events", func(t *testing.T) {
+		require.NotNil(t, freezeTx, "the withdrawal subtest must run first")
+		require.NotNil(t, freezeBlock, "the withdrawal subtest must run first")
+
+		// The withdrawal transaction reports the freeze...
+		exhausted, ok := helpers.FindEvent(freezeTx.Events, billingtypes.EventTypeStreamExhausted, billingtypes.AttributeKeyTenant, autoCloseTenantAddr)
+		require.True(t, ok, "the withdrawal should emit stream_exhausted for the tenant's stream")
+		require.Equal(t, tc.providerUUID, exhausted[billingtypes.AttributeKeyProviderUUID])
+		require.Equal(t, tc.pwrDenom, exhausted[billingtypes.AttributeKeyDenom])
+
+		batches := helpers.FilterEvents(freezeTx.Events, billingtypes.EventTypeBatchWithdraw)
+		require.Len(t, batches, 1)
+		require.Equal(t, "1", batches[0][billingtypes.AttributeKeyExhaustedCount])
+
+		// ...but closes nothing: lease_auto_closed is a block event, emitted by
+		// the EndBlocker of the same block.
+		require.Empty(t, helpers.FilterEvents(freezeTx.Events, billingtypes.EventTypeLeaseAutoClose),
+			"the withdrawal transaction must not close leases itself")
+		require.Empty(t, helpers.FilterEvents(freezeTx.Events, billingtypes.EventTypeLeaseClosed))
+
+		autoClosed, ok := helpers.FindEvent(freezeBlock.Events, billingtypes.EventTypeLeaseAutoClose, billingtypes.AttributeKeyLeaseUUID, autoCloseLeaseID)
+		require.True(t, ok, "block %d should emit lease_auto_closed for lease %s", freezeTx.Height, autoCloseLeaseID)
+		require.Equal(t, autoCloseTenantAddr, autoClosed[billingtypes.AttributeKeyTenant])
+		require.Equal(t, tc.providerUUID, autoClosed[billingtypes.AttributeKeyProviderUUID])
+		require.Equal(t, "credit_exhausted", autoClosed[billingtypes.AttributeKeyReason])
+
 		// Query the lease to verify it's closed
 		lease, err := helpers.BillingQueryLease(ctx, tc.chain, autoCloseLeaseID)
 		require.NoError(t, err)
@@ -402,19 +478,40 @@ func testAutoCloseMechanismIndependent(t *testing.T, ctx context.Context, tc *bi
 		t.Logf("Lease closure_reason: %s", lease.Lease.GetClosureReason())
 	})
 
-	t.Run("success: provider already withdrew during auto-close", func(t *testing.T) {
-		// After auto-close, the provider should have already received their tokens
-		// during the settlement that triggered the close
-		// Attempting another withdrawal should return 0 (nothing left to withdraw)
-		res, err := helpers.BillingWithdraw(ctx, tc.chain, tc.providerWallet, autoCloseLeaseID)
+	t.Run("success: auto-close releases the stream, the reservation and the lease count", func(t *testing.T) {
+		// A stream exists only while it has an ACTIVE lease.
+		stream, err := helpers.BillingQueryStream(ctx, tc.chain, tc.providerUUID, autoCloseTenantAddr, tc.pwrDenom)
+		require.NoError(t, err)
+		require.Nil(t, stream, "the drained stream should be deleted")
+
+		creditRes, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, autoCloseTenantAddr)
+		require.NoError(t, err)
+		require.Zero(t, creditRes.CreditAccount.ActiveLeaseCount)
+		require.True(t, creditRes.CreditAccount.ReservedAmounts.IsZero(),
+			"the closed lease's reservation should be released, got %s", creditRes.CreditAccount.ReservedAmounts)
+
+		active, err := helpers.BillingQueryLeasesByTenant(ctx, tc.chain, autoCloseTenantAddr, "active")
+		require.NoError(t, err)
+		require.Empty(t, active.Leases)
+	})
+
+	t.Run("success: provider already withdrew when the stream froze", func(t *testing.T) {
+		// The provider received the tenant's whole credit in the settlement that
+		// froze the stream. Another withdrawal succeeds, since the provider may
+		// have other streams, but takes nothing more from this tenant.
+		res, err := helpers.BillingWithdrawByProvider(ctx, tc.chain, tc.providerWallet, tc.providerUUID, 0)
 		require.NoError(t, err)
 
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		// Should fail since lease is inactive and no accrual since last settlement
-		require.NotEqual(t, uint32(0), txRes.Code, "second withdrawal should fail")
-		require.Contains(t, txRes.RawLog, "no withdrawable amount",
-			"should indicate no withdrawable amount")
+		require.Equal(t, uint32(0), txRes.Code, "a withdrawal with nothing accrued is not an error: %s", txRes.RawLog)
+
+		_, paidAgain := helpers.FindEvent(txRes.Events, billingtypes.EventTypeStreamSettled, billingtypes.AttributeKeyTenant, autoCloseTenantAddr)
+		require.False(t, paidAgain, "the closed lease's tenant must not be charged again")
+
+		creditRes, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, autoCloseTenantAddr)
+		require.NoError(t, err)
+		require.True(t, creditRes.Balances.AmountOf(tc.pwrDenom).IsZero())
 	})
 
 	t.Run("success: tenant cannot create new lease with exhausted credit", func(t *testing.T) {
@@ -473,8 +570,15 @@ func testAutoCloseMechanismIndependent(t *testing.T, ctx context.Context, tc *bi
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
 
-		// Wait for credit exhaustion (~15 seconds)
-		require.NoError(t, testutil.WaitForBlocks(ctx, 20, tc.chain))
+		// Wait until the accrual exceeds the credit (15 seconds after the stream
+		// was last settled), leaving an unpaid remainder.
+		stream, err := helpers.BillingQueryStream(ctx, tc.chain, tc.providerUUID, tenant2.FormattedAddress(), tc.pwrDenom)
+		require.NoError(t, err)
+		require.NotNil(t, stream)
+		waitForBlockTime(t, ctx, tc.chain, stream.State.LastSettledAt.Add(time.Duration(creditSeconds+1)*time.Second))
+
+		providerBalance, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
+		require.NoError(t, err)
 
 		res, err = helpers.BillingCloseLease(ctx, tc.chain, tenant2, leaseID)
 		require.NoError(t, err)
@@ -482,10 +586,39 @@ func testAutoCloseMechanismIndependent(t *testing.T, ctx context.Context, tc *bi
 		require.NoError(t, err)
 		require.Equal(t, uint32(0), txRes.Code, "explicit close should succeed even with exhausted credit")
 
-		// Verify final state is inactive (explicit close)
+		// The close is synchronous: unlike a withdrawal, it closes the lease in
+		// the transaction, after settling the stream for the last time.
 		lease, err := helpers.BillingQueryLease(ctx, tc.chain, leaseID)
 		require.NoError(t, err)
 		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState(), "lease should be inactive after exhaustion")
+
+		// The credit could not cover the accrual, so the closure is attributed
+		// to credit exhaustion, not to the tenant.
+		require.Equal(t, billingtypes.ClosureReasonCreditExhausted, lease.Lease.GetClosureReason())
+		closed, ok := helpers.FindEvent(txRes.Events, billingtypes.EventTypeLeaseClosed, billingtypes.AttributeKeyLeaseUUID, leaseID)
+		require.True(t, ok, "the close should emit lease_closed")
+		require.Equal(t, "credit_exhaustion", closed[billingtypes.AttributeKeyClosedBy])
+		require.Empty(t, helpers.FilterEvents(txRes.Events, billingtypes.EventTypeLeaseAutoClose))
+
+		// The provider received the tenant's whole credit, and nothing more.
+		settled, ok := helpers.FindEvent(txRes.Events, billingtypes.EventTypeStreamSettled, billingtypes.AttributeKeyTenant, tenant2.FormattedAddress())
+		require.True(t, ok, "the close should settle the tenant's stream")
+		require.Equal(t, sdk.NewInt64Coin(tc.pwrDenom, autoCloseCredit).String(), settled[billingtypes.AttributeKeyAmount])
+		providerBalanceAfter, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
+		require.NoError(t, err)
+		require.Equal(t, sdkmath.NewInt(autoCloseCredit).String(), providerBalanceAfter.Sub(providerBalance).String())
+
+		creditRes, err := helpers.BillingQueryCreditAccount(ctx, tc.chain, tenant2.FormattedAddress())
+		require.NoError(t, err)
+		require.True(t, creditRes.Balances.AmountOf(tc.pwrDenom).IsZero(), "credit should be depleted, got %s", creditRes.Balances)
+		require.Zero(t, creditRes.CreditAccount.ActiveLeaseCount)
+		require.True(t, creditRes.CreditAccount.ReservedAmounts.IsZero())
+
+		// The frozen stream lost its only lease, so it is deleted rather than
+		// left for the EndBlocker.
+		stream, err = helpers.BillingQueryStream(ctx, tc.chain, tc.providerUUID, tenant2.FormattedAddress(), tc.pwrDenom)
+		require.NoError(t, err)
+		require.Nil(t, stream)
 	})
 
 	// Test that closing a lease triggers settlement and transfers accrued amount
@@ -551,6 +684,24 @@ func testAutoCloseMechanismIndependent(t *testing.T, ctx context.Context, tc *bi
 		lease, err := helpers.BillingQueryLease(ctx, tc.chain, leaseID)
 		require.NoError(t, err)
 		require.Equal(t, billingtypes.LEASE_STATE_CLOSED, lease.Lease.GetState(), "lease should be inactive")
+
+		// The lease was the only one of its stream, which started at the
+		// acknowledgement without a remainder, so the close charged exactly the
+		// rate (1000/second) for the time the lease was active, to the
+		// nanosecond: rate × active nanoseconds / 1e9, fractions of a second
+		// included.
+		require.NotNil(t, lease.Lease.AcknowledgedAt)
+		require.NotNil(t, lease.Lease.ClosedAt)
+		active := lease.Lease.ClosedAt.Sub(*lease.Lease.AcknowledgedAt)
+		require.Positive(t, active)
+		expectedCharge, _ := helpers.StreamStateJSON{
+			Rate: sdkmath.NewInt(1000), LastSettledAt: *lease.Lease.AcknowledgedAt, Remainder: sdkmath.ZeroInt(),
+		}.AccrualAt(*lease.Lease.ClosedAt)
+		charged := initialCredit.Balances.AmountOf(tc.pwrDenom).Sub(afterCredit.Balances.AmountOf(tc.pwrDenom))
+		require.Equal(t, expectedCharge.String(), charged.String(),
+			"close should charge the rate for exactly the %s the lease was active", active)
+		// The tenant chose to close and its credit covered the charge.
+		require.Empty(t, lease.Lease.GetClosureReason())
 	})
 
 	// Restore original minLeaseDuration (1 hour) after auto-close tests
@@ -573,65 +724,108 @@ func testAutoCloseMechanismIndependent(t *testing.T, ctx context.Context, tc *bi
 
 // testProviderWithdrawLimitsIndependent tests provider withdraw limit functionality.
 func testProviderWithdrawLimitsIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
-	// Create a new tenant for these tests
-	users := interchaintest.GetAndFundTestUsers(t, ctx, "provider-withdraw-limit-tenant", DefaultGenesisAmt, tc.chain)
-	tenant := users[0]
+	// The withdraw limit counts streams, and a tenant has one stream per
+	// provider and denom however many leases it holds. Paginating a withdrawal
+	// therefore takes several tenants: one with three leases (a single stream
+	// aggregating them) and two with one lease each.
+	const multiLeaseCount = 3
+	tenants := interchaintest.GetAndFundTestUsers(t, ctx, "provider-withdraw-limit-tenant", DefaultGenesisAmt, tc.chain, tc.chain, tc.chain)
+	leasesPerTenant := []int{multiLeaseCount, 1, 1}
 
-	// Fund tenant's credit account
-	fundAmount := fmt.Sprintf("500000000%s", tc.pwrDenom) // 500 PWR
-	res, err := helpers.BillingFundCredit(ctx, tc.chain, tc.authority, tenant.FormattedAddress(), fundAmount)
-	require.NoError(t, err)
-	txRes, err := tc.chain.GetTransaction(res.TxHash)
-	require.NoError(t, err)
-	require.Equal(t, uint32(0), txRes.Code)
-
-	// Create multiple leases for testing
-	leaseIDs := make([]string, 5)
-	for i := 0; i < 5; i++ {
-		items := []string{fmt.Sprintf("%s:1", tc.skuUUID)}
-		res, err := helpers.BillingCreateLease(ctx, tc.chain, tenant, items)
+	for i, tenant := range tenants {
+		// Fund tenant's credit account
+		fundAmount := fmt.Sprintf("500000000%s", tc.pwrDenom) // 500 PWR
+		res, err := helpers.BillingFundCredit(ctx, tc.chain, tc.authority, tenant.FormattedAddress(), fundAmount)
 		require.NoError(t, err)
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "lease creation should succeed")
+		require.Equal(t, uint32(0), txRes.Code)
 
-		leaseID, err := helpers.GetLeaseIDFromTxHash(ctx, tc.chain, res.TxHash)
-		require.NoError(t, err)
-		leaseIDs[i] = leaseID
-
-		// Acknowledge the lease to make it ACTIVE
-		ackRes, err := helpers.BillingAcknowledgeLease(ctx, tc.chain, tc.providerWallet, leaseID)
-		require.NoError(t, err)
-		ackTxRes, err := tc.chain.GetTransaction(ackRes.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), ackTxRes.Code, "lease acknowledgement should succeed: %s", ackTxRes.RawLog)
+		for range leasesPerTenant[i] {
+			items := []string{fmt.Sprintf("%s:1", tc.skuUUID)}
+			_, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tenant, tc.providerWallet, items)
+			require.NoError(t, err)
+		}
 	}
+
+	multiLeaseStream := streamKey{providerUUID: tc.providerUUID, tenant: tenants[0].FormattedAddress(), denom: tc.pwrDenom}
+
+	t.Run("success: leases of one tenant share a stream", func(t *testing.T) {
+		streams := snapshotProviderStreams(t, ctx, tc.chain, tc.providerUUID)
+		require.GreaterOrEqual(t, len(streams), len(tenants), "each tenant should have a stream with the provider")
+
+		for i, tenant := range tenants {
+			key := streamKey{providerUUID: tc.providerUUID, tenant: tenant.FormattedAddress(), denom: tc.pwrDenom}
+			stream, ok := streams[key]
+			require.True(t, ok, "tenant %d should have a stream", i)
+			require.Equal(t, uint64(leasesPerTenant[i]), stream.LeaseCount)
+			// tc.skuUUID costs 1000 per second.
+			require.Equal(t, sdkmath.NewInt(1000*int64(leasesPerTenant[i])).String(), stream.Rate.String())
+		}
+	})
 
 	// Wait for some accrual
 	require.NoError(t, testutil.WaitForBlocks(ctx, 5, tc.chain))
 
 	// Test: provider withdraw with custom limit
-	t.Run("success: provider withdraw with custom limit", func(t *testing.T) {
-		// Use a limit of 2 to test pagination
-		res, err := helpers.BillingWithdrawByProvider(ctx, tc.chain, tc.providerWallet, tc.providerUUID, 2)
-		require.NoError(t, err)
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "provider withdraw should succeed")
+	t.Run("success: provider withdraw paginates over streams", func(t *testing.T) {
+		streamCount := len(snapshotProviderStreams(t, ctx, tc.chain, tc.providerUUID))
+		require.GreaterOrEqual(t, streamCount, 3)
 
-		// Check events for has_more flag
-		t.Logf("Provider withdraw with limit 2 succeeded")
+		// A limit of 2 settles two streams, whatever the number of leases they
+		// aggregate, and reports that more remain.
+		first := requireProviderWithdraw(t, ctx, tc.chain, tc.providerWallet, tc.providerUUID, 2, "", "--gas", "2000000")
+		require.Len(t, first.Settled, 2, "limit should count streams, not leases")
+		require.Equal(t, uint64(2), first.Response.WithdrawalCount)
+		require.True(t, first.Response.HasMore, "%d streams remain", streamCount-2)
+		require.NotEmpty(t, first.Response.NextKey)
+
+		// Continue from the cursor until the provider has no more streams. Each
+		// page settles the streams behind the previous one, none of them twice.
+		seen := make(map[streamKey]struct{})
+		for _, key := range first.Settled {
+			seen[key] = struct{}{}
+		}
+		page := first
+		for pages := 1; page.Response.HasMore; pages++ {
+			require.Less(t, pages, streamCount, "pagination did not terminate")
+
+			cursor := base64.StdEncoding.EncodeToString(page.Response.NextKey)
+			page = requireProviderWithdraw(t, ctx, tc.chain, tc.providerWallet, tc.providerUUID, 2, cursor, "--gas", "2000000")
+			require.NotEmpty(t, page.Settled, "a page behind the cursor should settle streams")
+			require.LessOrEqual(t, len(page.Settled), 2)
+			for _, key := range page.Settled {
+				require.NotContains(t, seen, key, "stream settled by two pages of the same pass")
+				seen[key] = struct{}{}
+			}
+		}
+		require.Len(t, seen, streamCount, "the pages together should settle every stream once")
+		require.Empty(t, page.Response.NextKey)
 	})
 
 	// Test: provider withdraw with default limit (0 means default)
-	// Uses higher gas because provider-wide withdraw processes all leases for this provider
-	// across the entire test suite (not just the 5 created in this function).
 	t.Run("success: provider withdraw with default limit", func(t *testing.T) {
-		res, err := helpers.BillingWithdrawByProvider(ctx, tc.chain, tc.providerWallet, tc.providerUUID, 0, "--gas", "2000000")
-		require.NoError(t, err)
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "provider withdraw should succeed")
+		require.NoError(t, testutil.WaitForBlocks(ctx, 3, tc.chain))
+
+		withdrawal := requireProviderWithdraw(t, ctx, tc.chain, tc.providerWallet, tc.providerUUID, 0, "", "--gas", "2000000")
+		require.False(t, withdrawal.Response.HasMore, "the default limit (50) covers all of the provider's streams")
+		require.Len(t, withdrawal.Settled, len(withdrawal.Before), "every stream should be settled")
+
+		// The three leases of one tenant were paid by a single settlement, at
+		// three times the rate of one lease: exactly
+		// (remainder + 3000 × elapsed nanoseconds) / 1e9, as requireProviderWithdraw
+		// verified for every settled stream.
+		require.Contains(t, withdrawal.Settled, multiLeaseStream)
+		before, after := withdrawal.Before[multiLeaseStream], withdrawal.After[multiLeaseStream]
+		require.Equal(t, sdkmath.NewInt(multiLeaseCount*1000).String(), before.Rate.String())
+		expected, remainder := before.AccrualAt(after.LastSettledAt)
+		require.True(t, expected.IsPositive())
+		require.Equal(t, expected.String(), withdrawal.Amounts[multiLeaseStream].String())
+		require.Equal(t, remainder.String(), after.Remainder.String())
+		settled, ok := helpers.FindEvent(withdrawal.Tx.Events, billingtypes.EventTypeStreamSettled,
+			billingtypes.AttributeKeyTenant, multiLeaseStream.tenant)
+		require.True(t, ok)
+		require.Equal(t, sdk.NewCoin(tc.pwrDenom, expected).String(), settled[billingtypes.AttributeKeyAmount])
 	})
 
 	// Test: provider withdraw with limit exceeding maximum should fail at CLI validation
@@ -744,11 +938,12 @@ func testProviderDeactivationIndependent(t *testing.T, ctx context.Context, tc *
 
 	// Provider can still withdraw after deactivation
 	t.Run("success: provider can still withdraw after deactivation", func(t *testing.T) {
-		res, err := helpers.BillingWithdraw(ctx, tc.chain, deactivationProviderWallet, leaseID)
-		require.NoError(t, err)
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "withdrawal should succeed")
+		// The stream of the lease created before the deactivation keeps accruing
+		// and paying the deactivated provider.
+		withdrawal := requireProviderWithdraw(t, ctx, tc.chain, deactivationProviderWallet, deactivateProviderUUID, 0, "")
+		require.Equal(t, []streamKey{{providerUUID: deactivateProviderUUID, tenant: tenant.FormattedAddress(), denom: tc.pwrDenom}},
+			withdrawal.Settled, "the tenant's stream should pay the deactivated provider")
+		require.True(t, withdrawal.Paid.AmountOf(tc.pwrDenom).IsPositive())
 	})
 
 	// Cannot create new lease with deactivated provider's SKU
@@ -930,11 +1125,14 @@ func testSKUDeactivationIndependent(t *testing.T, ctx context.Context, tc *billi
 
 	// Provider can still withdraw from existing lease
 	t.Run("success: provider can withdraw from lease with deactivated SKU", func(t *testing.T) {
-		res, err := helpers.BillingWithdraw(ctx, tc.chain, skuDeactProviderWallet, leaseID)
-		require.NoError(t, err)
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "withdrawal should succeed")
+		// The lease keeps its locked price, so its stream keeps accruing at the
+		// rate of the SKU deactivated since.
+		withdrawal := requireProviderWithdraw(t, ctx, tc.chain, skuDeactProviderWallet, skuDeactProviderUUID, 0, "")
+		key := streamKey{providerUUID: skuDeactProviderUUID, tenant: tenant.FormattedAddress(), denom: tc.pwrDenom}
+		require.Equal(t, []streamKey{key}, withdrawal.Settled, "the tenant's stream should pay the provider")
+		require.Equal(t, "1000", withdrawal.Before[key].Rate.String())
+		require.Equal(t, uint64(1), withdrawal.Before[key].LeaseCount)
+		require.True(t, withdrawal.Paid.AmountOf(tc.pwrDenom).IsPositive())
 	})
 
 	// Cannot create new lease with deactivated SKU
@@ -1263,41 +1461,86 @@ func testMultiDenomIndependent(t *testing.T, ctx context.Context, tc *billingTes
 	// Wait for accrual
 	require.NoError(t, testutil.WaitForBlocks(ctx, 5, tc.chain))
 
+	pwrStream := streamKey{providerUUID: multiDenomProviderUUID, tenant: tenant.FormattedAddress(), denom: tc.pwrDenom}
+	secondStream := streamKey{providerUUID: multiDenomProviderUUID, tenant: tenant.FormattedAddress(), denom: secondDenom}
+
+	// A lease priced in two denoms belongs to two streams, one per denom
+	t.Run("success: multi-denom lease has one stream per denom", func(t *testing.T) {
+		streams := snapshotProviderStreams(t, ctx, tc.chain, multiDenomProviderUUID)
+		require.Len(t, streams, 2, "one stream per denom the lease is priced in")
+
+		// 3600000 PWR per hour = 1000 per second; 7200000 of the second denom
+		// per hour = 2000 per second.
+		require.Contains(t, streams, pwrStream)
+		require.Equal(t, "1000", streams[pwrStream].Rate.String())
+		require.Equal(t, uint64(1), streams[pwrStream].LeaseCount)
+		require.Contains(t, streams, secondStream)
+		require.Equal(t, "2000", streams[secondStream].Rate.String())
+		require.Equal(t, uint64(1), streams[secondStream].LeaseCount)
+
+		// Both streams were created by the same acknowledgement, so they start at
+		// the same block time without a remainder.
+		require.True(t, streams[pwrStream].LastSettledAt.Equal(streams[secondStream].LastSettledAt))
+		require.True(t, streams[pwrStream].Remainder.IsZero())
+		require.True(t, streams[secondStream].Remainder.IsZero())
+
+		// The tenant sees the same two streams.
+		byTenant, err := helpers.BillingQueryStreamsByTenant(ctx, tc.chain, tenant.FormattedAddress())
+		require.NoError(t, err)
+		require.Len(t, byTenant.Streams, 2)
+		require.NotNil(t, byTenant.Find(multiDenomProviderUUID, tenant.FormattedAddress(), tc.pwrDenom))
+		require.NotNil(t, byTenant.Find(multiDenomProviderUUID, tenant.FormattedAddress(), secondDenom))
+
+		// Paging the tenant's streams one at a time, with the printed next_key
+		// (base64) as --page-key, returns them in the same order.
+		first, nextKey, err := helpers.BillingQueryStreamsByTenantPaginated(ctx, tc.chain, tenant.FormattedAddress(), 1, "")
+		require.NoError(t, err)
+		require.Len(t, first.Streams, 1)
+		require.Equal(t, byTenant.Streams[0].Denom, first.Streams[0].Denom)
+		require.NotEmpty(t, nextKey, "a second stream remains")
+		second, nextKey, err := helpers.BillingQueryStreamsByTenantPaginated(ctx, tc.chain, tenant.FormattedAddress(), 1, nextKey)
+		require.NoError(t, err)
+		require.Len(t, second.Streams, 1)
+		require.Equal(t, byTenant.Streams[1].Denom, second.Streams[0].Denom, "the cursor should lead to the tenant's other stream")
+		require.Equal(t, multiDenomProviderUUID, second.Streams[0].ProviderUuid)
+		require.Empty(t, nextKey, "the last page should not have a next key")
+	})
+
 	// Query withdrawable - should show multiple denoms
 	t.Run("success: withdrawable amounts show multiple denoms", func(t *testing.T) {
-		withdrawableRes, err := helpers.BillingQueryWithdrawable(ctx, tc.chain, multiDenomLeaseID)
+		withdrawableRes, err := helpers.BillingQueryProviderWithdrawable(ctx, tc.chain, multiDenomProviderUUID)
 		require.NoError(t, err)
 		require.NotNil(t, withdrawableRes)
 		t.Logf("Withdrawable amounts: %s", withdrawableRes.Amounts)
 
 		// Should have amounts in both denoms
-		require.GreaterOrEqual(t, len(withdrawableRes.Amounts), 2, "withdrawable should have multiple denoms")
+		require.Len(t, withdrawableRes.Amounts, 2, "withdrawable should have multiple denoms")
+		pwrAmount := withdrawableRes.Amounts.AmountOf(tc.pwrDenom)
+		secondAmount := withdrawableRes.Amounts.AmountOf(secondDenom)
+		require.True(t, pwrAmount.IsPositive(), "should have accrued PWR")
+		// Both streams accrue over the same time, at 1000 and 2000 per second,
+		// each rounded down to a whole unit: floor(2x) is 2·floor(x) or one more.
+		require.True(t, secondAmount.Equal(pwrAmount.MulRaw(2)) || secondAmount.Equal(pwrAmount.MulRaw(2).AddRaw(1)),
+			"the second denom accrues at twice the rate over the same time: %s vs %s", secondAmount, pwrAmount)
 	})
 
 	// Withdraw - should receive multiple denoms
 	t.Run("success: withdraw receives multiple denoms", func(t *testing.T) {
-		// Get initial balances
-		initialPWR, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
-		require.NoError(t, err)
-		initialSecond, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), secondDenom)
-		require.NoError(t, err)
+		// The provider-wide withdrawal settles both streams and pays each in its
+		// own denom; requireProviderWithdraw checks the payout address received
+		// each stream's exact accrual.
+		withdrawal := requireProviderWithdraw(t, ctx, tc.chain, tc.providerWallet, multiDenomProviderUUID, 0, "")
+		require.ElementsMatch(t, []streamKey{pwrStream, secondStream}, withdrawal.Settled)
 
-		res, err := helpers.BillingWithdraw(ctx, tc.chain, tc.providerWallet, multiDenomLeaseID)
-		require.NoError(t, err)
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "withdrawal should succeed")
-
-		// Verify provider received both denoms
-		newPWR, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
-		require.NoError(t, err)
-		newSecond, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), secondDenom)
-		require.NoError(t, err)
-
-		require.True(t, newPWR.GT(initialPWR), "provider should receive PWR from withdrawal")
-		require.True(t, newSecond.GT(initialSecond), "provider should receive second denom from withdrawal")
-		t.Logf("Received PWR: %s -> %s", initialPWR, newPWR)
-		t.Logf("Received second: %s -> %s", initialSecond, newSecond)
+		paidPWR := withdrawal.Paid.AmountOf(tc.pwrDenom)
+		paidSecond := withdrawal.Paid.AmountOf(secondDenom)
+		require.True(t, paidPWR.IsPositive(), "provider should receive PWR from withdrawal")
+		// Same start, same block, no remainder carried in: twice the rate pays
+		// twice as much, up to the unit each stream rounds down.
+		require.True(t, paidSecond.Equal(paidPWR.MulRaw(2)) || paidSecond.Equal(paidPWR.MulRaw(2).AddRaw(1)),
+			"provider should receive twice as much of the second denom: %s vs %s", paidSecond, paidPWR)
+		require.Equal(t, uint64(2), withdrawal.Response.WithdrawalCount, "one payout per stream")
+		t.Logf("Received PWR: %s, second: %s", paidPWR, paidSecond)
 	})
 
 	// Wait more and close lease

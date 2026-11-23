@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	sdkmath "cosmossdk.io/math"
 	"github.com/strangelove-ventures/interchaintest/v8"
@@ -312,33 +313,109 @@ func testCreditEstimateQueryIndependent(t *testing.T, ctx context.Context, tc *b
 func testAccrualCalculationIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
 	t.Log("=== Testing Accrual Calculation ===")
 
+	tenantAddr := tc.tenant1.FormattedAddress()
+
+	// The tenant's stream with the provider before the new lease, if any.
+	before, err := helpers.BillingQueryStream(ctx, tc.chain, tc.providerUUID, tenantAddr, tc.pwrDenom)
+	require.NoError(t, err)
+	rateBefore, leasesBefore := sdkmath.ZeroInt(), uint64(0)
+	if before != nil {
+		rateBefore, leasesBefore = before.State.Rate, before.State.LeaseCount
+	}
+
 	// Create a lease for accrual testing
 	items := []string{fmt.Sprintf("%s:1", tc.skuUUID)}
 	leaseUUID, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant1, tc.providerWallet, items)
 	require.NoError(t, err)
 
-	t.Run("success: verify accrual increases over time", func(t *testing.T) {
-		// Get initial withdrawable
-		initial, err := helpers.BillingQueryWithdrawable(ctx, tc.chain, leaseUUID)
+	t.Run("success: acknowledged lease joins the tenant's stream", func(t *testing.T) {
+		stream, err := helpers.BillingQueryStream(ctx, tc.chain, tc.providerUUID, tenantAddr, tc.pwrDenom)
 		require.NoError(t, err)
-		t.Logf("Initial withdrawable: %s", initial.Amounts)
+		require.NotNil(t, stream, "an ACTIVE lease must be aggregated by a stream")
+
+		// tc.skuUUID costs 3600000 per hour: 1000 per second.
+		require.Equal(t, rateBefore.AddRaw(1000).String(), stream.State.Rate.String())
+		require.Equal(t, leasesBefore+1, stream.State.LeaseCount)
+		require.False(t, stream.State.IsExhausted())
+
+		// Joining settles the stream at the acknowledgement, exactly at that
+		// block's time, so the new lease is never charged for time before it
+		// joined. A stream moves to the block time, not to a whole-second grid.
+		lease, err := helpers.BillingQueryLease(ctx, tc.chain, leaseUUID)
+		require.NoError(t, err)
+		require.NotNil(t, lease.Lease.AcknowledgedAt)
+		require.True(t, stream.State.LastSettledAt.Equal(*lease.Lease.AcknowledgedAt),
+			"stream settled at %s, lease acknowledged at %s", stream.State.LastSettledAt, lease.Lease.AcknowledgedAt)
+		require.False(t, stream.State.Remainder.IsNil())
+		if before == nil {
+			require.True(t, stream.State.Remainder.IsZero(), "a new stream starts without a remainder, got %s", stream.State.Remainder)
+		} else {
+			// The stream accrued at its previous rate up to the acknowledgement.
+			_, remainder := before.State.AccrualAt(*lease.Lease.AcknowledgedAt)
+			require.Equal(t, remainder.String(), stream.State.Remainder.String(),
+				"remainder carried over the rate change should follow the accrual at the previous rate")
+		}
+	})
+
+	t.Run("success: verify accrual increases over time", func(t *testing.T) {
+		// expectedAt is what the provider's streams have accrued at a block time,
+		// exactly: (remainder + rate × nanoseconds since the stream was last
+		// settled) / 1e9, per stream. Every tenant of this suite is funded far
+		// beyond that, so no credit balance caps it.
+		streams := snapshotProviderStreams(t, ctx, tc.chain, tc.providerUUID)
+		expectedAt := func(blockTime time.Time) sdkmath.Int {
+			total := sdkmath.ZeroInt()
+			for key, state := range streams {
+				if key.denom != tc.pwrDenom {
+					continue
+				}
+				accrued, _ := state.AccrualAt(blockTime)
+				total = total.Add(accrued)
+			}
+			return total
+		}
+
+		// withdrawable reads the provider's withdrawable amount together with
+		// the block times the query ran between: the query is answered at the
+		// latest block, which may advance while it runs.
+		withdrawable := func() (amount sdkmath.Int, earliest, latest time.Time) {
+			earliest, err := helpers.GetLatestBlockTime(ctx, tc.chain)
+			require.NoError(t, err)
+			res, err := helpers.BillingQueryProviderWithdrawable(ctx, tc.chain, tc.providerUUID)
+			require.NoError(t, err)
+			latest, err = helpers.GetLatestBlockTime(ctx, tc.chain)
+			require.NoError(t, err)
+			return res.Amounts.AmountOf(tc.pwrDenom), earliest, latest
+		}
+		requireAccrued := func(amount sdkmath.Int, earliest, latest time.Time) {
+			require.True(t, amount.GTE(expectedAt(earliest)) && amount.LTE(expectedAt(latest)),
+				"withdrawable %s outside of [%s, %s], the accrual at block times %s and %s",
+				amount, expectedAt(earliest), expectedAt(latest), earliest, latest)
+		}
+
+		initial, earliest, latest := withdrawable()
+		t.Logf("Initial withdrawable: %s", initial)
+		requireAccrued(initial, earliest, latest)
 
 		// Wait for some blocks
 		require.NoError(t, testutil.WaitForBlocks(ctx, 5, tc.chain))
 
-		// Get updated withdrawable
-		updated, err := helpers.BillingQueryWithdrawable(ctx, tc.chain, leaseUUID)
-		require.NoError(t, err)
-		t.Logf("Updated withdrawable: %s", updated.Amounts)
+		updated, earliest, latest := withdrawable()
+		t.Logf("Updated withdrawable: %s", updated)
+		requireAccrued(updated, earliest, latest)
 
-		require.True(t, len(updated.Amounts) > 0 && len(initial.Amounts) > 0)
-		require.True(t, updated.Amounts[0].Amount.GTE(initial.Amounts[0].Amount),
-			"withdrawable should increase over time")
+		require.True(t, updated.GT(initial), "withdrawable should increase over time: %s -> %s", initial, updated)
+
+		// Accrual is lazy: nothing was settled while it grew, and querying the
+		// withdrawable amount does not settle a stream either.
+		requireSameStreams(t, streams, snapshotProviderStreams(t, ctx, tc.chain, tc.providerUUID))
 	})
 }
 
 func testWithdrawIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
 	t.Log("=== Testing Withdraw ===")
+
+	tenantStream := streamKey{providerUUID: tc.providerUUID, tenant: tc.tenant1.FormattedAddress(), denom: tc.pwrDenom}
 
 	// Get an active lease for tenant1
 	leases, err := helpers.BillingQueryLeasesByTenant(ctx, tc.chain, tc.tenant1.FormattedAddress(), "active")
@@ -349,25 +426,25 @@ func testWithdrawIndependent(t *testing.T, ctx context.Context, tc *billingTestC
 	// Wait for some accrual
 	require.NoError(t, testutil.WaitForBlocks(ctx, 3, tc.chain))
 
-	t.Run("success: provider withdraws from lease", func(t *testing.T) {
-		initialBalance, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
-		require.NoError(t, err)
+	t.Run("success: provider withdraws what its streams accrued", func(t *testing.T) {
+		withdrawal := requireProviderWithdraw(t, ctx, tc.chain, tc.providerWallet, tc.providerUUID, 0, "")
 
-		res, err := helpers.BillingWithdraw(ctx, tc.chain, tc.providerWallet, leaseUUID)
-		require.NoError(t, err)
+		// Settlement is per stream: the tenant's stream paid, whatever the
+		// number of leases it aggregates.
+		require.Contains(t, withdrawal.Settled, tenantStream)
+		require.True(t, withdrawal.Paid.AmountOf(tc.pwrDenom).IsPositive(), "provider should be paid for the accrued seconds")
+		require.False(t, withdrawal.Response.HasMore)
+		t.Logf("Provider was paid %s by %d stream(s)", withdrawal.Paid, len(withdrawal.Settled))
+	})
 
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "withdraw should succeed")
-
-		newBalance, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
-		require.NoError(t, err)
-		require.True(t, newBalance.GTE(initialBalance))
-		t.Logf("Provider balance: %s -> %s", initialBalance, newBalance)
+	t.Run("fail: withdrawing from individual leases is no longer supported", func(t *testing.T) {
+		// Lease mode is gone: the CLI rejects lease UUIDs before broadcasting.
+		_, err := helpers.BillingWithdrawLeasesLegacy(ctx, tc.chain, tc.providerWallet, []string{leaseUUID})
+		require.ErrorContains(t, err, "withdrawing from individual leases is no longer supported")
 	})
 
 	t.Run("fail: tenant cannot withdraw", func(t *testing.T) {
-		res, err := helpers.BillingWithdraw(ctx, tc.chain, tc.tenant1, leaseUUID)
+		res, err := helpers.BillingWithdrawByProvider(ctx, tc.chain, tc.tenant1, tc.providerUUID, 0)
 		require.NoError(t, err)
 
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
@@ -377,23 +454,27 @@ func testWithdrawIndependent(t *testing.T, ctx context.Context, tc *billingTestC
 	})
 
 	t.Run("fail: unauthorized user cannot withdraw", func(t *testing.T) {
-		res, err := helpers.BillingWithdraw(ctx, tc.chain, tc.unauthorizedUser, leaseUUID)
+		before := snapshotProviderStreams(t, ctx, tc.chain, tc.providerUUID)
+
+		res, err := helpers.BillingWithdrawByProvider(ctx, tc.chain, tc.unauthorizedUser, tc.providerUUID, 0)
 		require.NoError(t, err)
 
 		txRes, err := tc.chain.GetTransaction(res.TxHash)
 		require.NoError(t, err)
 		require.NotEqual(t, uint32(0), txRes.Code)
+		require.Contains(t, txRes.RawLog, "unauthorized")
+
+		// A rejected withdrawal settles nothing.
+		requireSameStreams(t, before, snapshotProviderStreams(t, ctx, tc.chain, tc.providerUUID))
 	})
 
 	t.Run("success: authority withdraws on behalf of provider", func(t *testing.T) {
 		require.NoError(t, testutil.WaitForBlocks(ctx, 3, tc.chain))
 
-		res, err := helpers.BillingWithdraw(ctx, tc.chain, tc.authority, leaseUUID)
-		require.NoError(t, err)
-
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "authority withdraw should succeed")
+		// The funds still go to the provider's payout address, not to the authority.
+		withdrawal := requireProviderWithdraw(t, ctx, tc.chain, tc.authority, tc.providerUUID, 0, "")
+		require.Contains(t, withdrawal.Settled, tenantStream)
+		require.Equal(t, tc.providerWallet.FormattedAddress(), withdrawal.Response.PayoutAddress)
 	})
 }
 
@@ -403,44 +484,192 @@ func testWithdrawByProviderIndependent(t *testing.T, ctx context.Context, tc *bi
 	// Wait for some accrual
 	require.NoError(t, testutil.WaitForBlocks(ctx, 5, tc.chain))
 
-	t.Run("success: provider withdraws from all leases", func(t *testing.T) {
-		initialBalance, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
-		require.NoError(t, err)
+	t.Run("success: provider withdraws from all its streams", func(t *testing.T) {
+		withdrawal := requireProviderWithdraw(t, ctx, tc.chain, tc.providerWallet, tc.providerUUID, 0, "")
 
-		res, err := helpers.BillingWithdrawByProvider(ctx, tc.chain, tc.providerWallet, tc.providerUUID, 0)
-		require.NoError(t, err)
-
-		txRes, err := tc.chain.GetTransaction(res.TxHash)
-		require.NoError(t, err)
-		require.Equal(t, uint32(0), txRes.Code, "withdraw by provider should succeed")
-
-		newBalance, err := tc.chain.GetBalance(ctx, tc.providerWallet.FormattedAddress(), tc.pwrDenom)
-		require.NoError(t, err)
-		require.True(t, newBalance.GTE(initialBalance))
-		t.Logf("Provider balance: %s -> %s", initialBalance, newBalance)
+		// Every stream had accrued for several blocks, so each one paid out.
+		require.NotEmpty(t, withdrawal.Before)
+		require.Len(t, withdrawal.Settled, len(withdrawal.Before), "every stream of the provider should pay out")
+		require.False(t, withdrawal.Response.HasMore)
+		t.Logf("Provider was paid %s by %d stream(s)", withdrawal.Paid, len(withdrawal.Settled))
 	})
 }
 
 func testWithdrawableQueriesIndependent(t *testing.T, ctx context.Context, tc *billingTestContext) {
 	t.Log("=== Testing Withdrawable Queries ===")
 
-	// Get an active lease
-	leases, err := helpers.BillingQueryLeasesByTenant(ctx, tc.chain, tc.tenant1.FormattedAddress(), "active")
-	require.NoError(t, err)
-	require.NotEmpty(t, leases.Leases)
-	leaseUUID := leases.Leases[0].Uuid
+	tenantAddr := tc.tenant1.FormattedAddress()
 
-	t.Run("success: query withdrawable amount for lease", func(t *testing.T) {
-		res, err := helpers.BillingQueryWithdrawable(ctx, tc.chain, leaseUUID)
+	// A second tenant gives the provider a second stream to paginate over.
+	items := []string{fmt.Sprintf("%s:2", tc.skuUUID)}
+	_, err := helpers.BillingCreateAndAcknowledgeLease(ctx, tc.chain, tc.tenant2, tc.providerWallet, items)
+	require.NoError(t, err)
+
+	// expectedStream derives a tenant's stream with the provider from its
+	// ACTIVE leases: the summed rate of their items and the number of leases.
+	expectedStream := func(t *testing.T, tenant string) (rate sdkmath.Int, leaseCount uint64) {
+		t.Helper()
+		leases, err := helpers.BillingQueryLeasesByTenant(ctx, tc.chain, tenant, "active")
 		require.NoError(t, err)
-		require.NotNil(t, res)
-		t.Logf("Withdrawable for lease %s: %s", leaseUUID, res.Amounts)
+		require.Empty(t, leases.GetNextKeyString(), "tenant has more active leases than one query page")
+
+		rate = sdkmath.ZeroInt()
+		for _, lease := range leases.Leases {
+			if lease.ProviderUuid != tc.providerUUID {
+				continue
+			}
+			leaseCount++
+			for _, item := range lease.Items {
+				require.Equal(t, tc.pwrDenom, item.LockedPrice.Denom)
+				quantity, ok := sdkmath.NewIntFromString(item.Quantity)
+				require.True(t, ok, "quantity %q", item.Quantity)
+				// locked_price is the per-second price of one unit.
+				rate = rate.Add(item.LockedPrice.Amount.Mul(quantity))
+			}
+		}
+		return rate, leaseCount
+	}
+
+	t.Run("success: query streams by provider", func(t *testing.T) {
+		res, err := helpers.BillingQueryStreamsByProvider(ctx, tc.chain, tc.providerUUID)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(res.Streams), 2)
+
+		for _, tenant := range []string{tenantAddr, tc.tenant2.FormattedAddress()} {
+			stream := res.Find(tc.providerUUID, tenant, tc.pwrDenom)
+			require.NotNil(t, stream, "tenant %s has active leases with the provider", tenant)
+
+			rate, leaseCount := expectedStream(t, tenant)
+			require.NotZero(t, leaseCount)
+			require.Equal(t, rate.String(), stream.State.Rate.String(), "stream rate is the sum of its active leases' rates")
+			require.Equal(t, leaseCount, stream.State.LeaseCount)
+			require.False(t, stream.State.IsExhausted())
+			t.Logf("Stream of %s: rate=%s leases=%d last_settled_at=%s", tenant, stream.State.Rate, stream.State.LeaseCount, stream.State.LastSettledAt)
+		}
+		for _, stream := range res.Streams {
+			require.Equal(t, tc.providerUUID, stream.ProviderUuid)
+		}
+	})
+
+	t.Run("success: query streams by provider with pagination", func(t *testing.T) {
+		// The unpaginated listing fixes the order the pages must follow.
+		all, err := helpers.BillingQueryStreamsByProvider(ctx, tc.chain, tc.providerUUID)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(all.Streams), 2, "pagination needs at least two streams")
+		require.Empty(t, all.GetNextKeyString())
+
+		// Page one stream at a time, passing each printed next_key (base64) back
+		// as --page-key. A cursor the node did not honour would repeat, skip or
+		// lose a stream, so every page must be exactly the next stream.
+		key := ""
+		for page, want := range all.Streams {
+			res, nextKey, err := helpers.BillingQueryStreamsByProviderPaginated(ctx, tc.chain, tc.providerUUID, 1, key)
+			require.NoError(t, err)
+			require.Len(t, res.Streams, 1, "page %d", page)
+
+			got := res.Streams[0]
+			require.Equal(t, want.ProviderUuid, got.ProviderUuid, "page %d", page)
+			require.Equal(t, want.Tenant, got.Tenant, "page %d should be stream %d of the full listing", page, page)
+			require.Equal(t, want.Denom, got.Denom, "page %d", page)
+
+			if page < len(all.Streams)-1 {
+				require.NotEmpty(t, nextKey, "page %d of %d should have a next key", page, len(all.Streams))
+			} else {
+				require.Empty(t, nextKey, "the last page should not have a next key")
+			}
+			key = nextKey
+		}
+	})
+
+	t.Run("success: query provider withdrawable with pagination", func(t *testing.T) {
+		// Let every stream accrue something to withdraw.
+		require.NoError(t, testutil.WaitForBlocks(ctx, 3, tc.chain))
+
+		all, err := helpers.BillingQueryStreamsByProvider(ctx, tc.chain, tc.providerUUID)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(all.Streams), 2, "pagination needs at least two streams")
+
+		// provider-withdrawable pages over the same streams, in the same order:
+		// each one-stream page covers the leases of exactly that stream.
+		key := ""
+		for page, stream := range all.Streams {
+			res, nextKey, err := helpers.BillingQueryProviderWithdrawablePaginated(ctx, tc.chain, tc.providerUUID, 1, key)
+			require.NoError(t, err)
+			require.Equal(t, stream.State.LeaseCount, res.LeaseCount, "page %d should cover stream %d of the full listing", page, page)
+			require.True(t, res.Amounts.AmountOf(stream.Denom).IsPositive(), "page %d: stream should have accrued", page)
+			require.Len(t, res.Amounts, 1, "page %d: one stream accrues in one denom", page)
+
+			if page < len(all.Streams)-1 {
+				require.NotEmpty(t, nextKey, "page %d of %d should have a next key", page, len(all.Streams))
+			} else {
+				require.Empty(t, nextKey, "the last page should not have a next key")
+			}
+			key = nextKey
+		}
+	})
+
+	t.Run("fail: stream queries reject a page key that is not base64", func(t *testing.T) {
+		// Stream keys hold raw address bytes, so these commands take --page-key
+		// as the base64 next_key a previous page printed. Anything else must be
+		// refused, not sent to the node as a different key.
+		const badKey = "not*base64!"
+
+		_, _, err := helpers.BillingQueryStreamsByProviderPaginated(ctx, tc.chain, tc.providerUUID, 1, badKey)
+		require.ErrorContains(t, err, "invalid --page-key")
+
+		_, _, err = helpers.BillingQueryStreamsByTenantPaginated(ctx, tc.chain, tenantAddr, 1, badKey)
+		require.ErrorContains(t, err, "invalid --page-key")
+
+		_, _, err = helpers.BillingQueryProviderWithdrawablePaginated(ctx, tc.chain, tc.providerUUID, 1, badKey)
+		require.ErrorContains(t, err, "invalid --page-key")
+	})
+
+	t.Run("success: query streams by tenant", func(t *testing.T) {
+		res, err := helpers.BillingQueryStreamsByTenant(ctx, tc.chain, tenantAddr)
+		require.NoError(t, err)
+		// tenant1 only leases from one provider, in one denom.
+		require.Len(t, res.Streams, 1)
+		require.Equal(t, tc.providerUUID, res.Streams[0].ProviderUuid)
+		require.Equal(t, tenantAddr, res.Streams[0].Tenant)
+		require.Equal(t, tc.pwrDenom, res.Streams[0].Denom)
+
+		// Both queries read the same stream.
+		key := streamKey{providerUUID: tc.providerUUID, tenant: tenantAddr, denom: tc.pwrDenom}
+		byProvider := snapshotProviderStreams(t, ctx, tc.chain, tc.providerUUID)
+		require.Contains(t, byProvider, key)
+		requireSameStreamState(t, key, byProvider[key], res.Streams[0].State)
+	})
+
+	t.Run("success: tenant without active leases has no stream", func(t *testing.T) {
+		res, err := helpers.BillingQueryStreamsByTenant(ctx, tc.chain, tc.unauthorizedUser.FormattedAddress())
+		require.NoError(t, err)
+		require.Empty(t, res.Streams)
+	})
+
+	t.Run("fail: query streams with invalid arguments", func(t *testing.T) {
+		_, err := helpers.BillingQueryStreamsByProvider(ctx, tc.chain, "not-a-uuid")
+		require.Error(t, err)
+
+		_, err = helpers.BillingQueryStreamsByTenant(ctx, tc.chain, "invalid-address")
+		require.Error(t, err)
 	})
 
 	t.Run("success: query provider total withdrawable", func(t *testing.T) {
+		// Let every stream accrue at least one whole second.
+		require.NoError(t, testutil.WaitForBlocks(ctx, 3, tc.chain))
+
+		streams := snapshotProviderStreams(t, ctx, tc.chain, tc.providerUUID)
+		var leaseCount uint64
+		for _, state := range streams {
+			leaseCount += state.LeaseCount
+		}
+
 		res, err := helpers.BillingQueryProviderWithdrawable(ctx, tc.chain, tc.providerUUID)
 		require.NoError(t, err)
 		require.NotNil(t, res)
+		require.True(t, res.Amounts.AmountOf(tc.pwrDenom).IsPositive(), "streams have accrued since their last settlement")
+		// lease_count covers the leases of the streams that have something to withdraw.
+		require.Equal(t, leaseCount, res.LeaseCount)
 		t.Logf("Total withdrawable for provider: %s (leases: %d)", res.Amounts, res.LeaseCount)
 	})
 }

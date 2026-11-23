@@ -8,7 +8,7 @@ Test Coverage:
 - MsgCreateLeaseForTenant: authority-only lease creation on behalf of tenants
 - MsgAcknowledgeLease: provider acknowledgement of pending leases
 - MsgCloseLease: lease closure by tenant, provider, or authority
-- MsgWithdraw: provider withdrawal from specific leases or all provider's leases
+- MsgWithdraw: provider withdrawal, settled per (provider, tenant, denom) stream
 
 NOTE: With the new lease lifecycle (PENDING -> ACTIVE), tests that need an ACTIVE
 lease must call createAndAcknowledgeLease helper instead of just CreateLease.
@@ -16,55 +16,23 @@ lease must call createAndAcknowledgeLease helper instead of just CreateLease.
 package keeper_test
 
 import (
+	"bytes"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"cosmossdk.io/collections"
 	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
+	"github.com/manifest-network/manifest-ledger/app/apptesting"
 	"github.com/manifest-network/manifest-ledger/x/billing/keeper"
 	"github.com/manifest-network/manifest-ledger/x/billing/types"
-	skutypes "github.com/manifest-network/manifest-ledger/x/sku/types"
 )
-
-// createAndAcknowledgeLease is a helper that creates a lease and acknowledges it,
-// returning the lease in ACTIVE state ready for testing.
-func (f *testFixture) createAndAcknowledgeLease(
-	t *testing.T,
-	msgServer types.MsgServer,
-	tenant sdk.AccAddress,
-	providerAddr sdk.AccAddress,
-	items []types.LeaseItemInput,
-) string {
-	t.Helper()
-
-	// Create the lease
-	createResp, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
-		Tenant: tenant.String(),
-		Items:  items,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, createResp)
-
-	// Acknowledge the lease as the provider
-	ackResp, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-		Sender:     providerAddr.String(),
-		LeaseUuids: []string{createResp.LeaseUuid},
-	})
-	require.NoError(t, err)
-	require.NotNil(t, ackResp)
-
-	// Verify lease is now ACTIVE
-	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, createResp.LeaseUuid)
-	require.NoError(t, err)
-	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
-
-	return createResp.LeaseUuid
-}
 
 func TestMsgFundCredit(t *testing.T) {
 	f := initFixture(t)
@@ -1085,27 +1053,64 @@ func TestMsgWithdraw(t *testing.T) {
 		},
 	})
 
+	acknowledgedAt := f.Ctx.BlockTime()
+	streamKey := keeper.NewStreamKey(provider.Uuid, tenant, denom)
+
 	// Advance block time by 100 seconds
 	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 	f.Ctx = newCtx
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
 
 	// Provider withdraws
 	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender:     providerAddr.String(),
-		LeaseUuids: []string{leaseID},
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, payoutAddr.String(), resp.PayoutAddress)
-	require.False(t, resp.TotalAmounts.IsZero())
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(100))), resp.TotalAmounts,
+		"1/s for 100 seconds")
 	require.Equal(t, uint64(1), resp.WithdrawalCount)
+	require.False(t, resp.HasMore)
+	require.Empty(t, resp.NextKey)
 
-	// Verify payout address received funds
+	// Verify the funds moved from the tenant's credit to the payout address
 	payoutBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
-	require.True(t, payoutBalance.Amount.IsPositive())
+	require.Equal(t, sdkmath.NewInt(100), payoutBalance.Amount)
+	creditBalance := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
+	require.Equal(t, fundAmount.Amount.SubRaw(100), creditBalance.Amount)
+
+	// The withdrawal settles the stream, not the lease
+	stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+	require.NoError(t, err)
+	require.Equal(t, acknowledgedAt.Add(100*time.Second), stream.LastSettledAt)
+	require.False(t, stream.IsExhausted())
+
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+	require.Nil(t, lease.LastSettledAt, "the deprecated field is never set") //nolint:staticcheck // asserting the deprecated field stays unset
+
+	// Events: one settlement and one summary carrying the same amount
+	settled := findEvent(t, f.Ctx, types.EventTypeStreamSettled)
+	require.Equal(t, provider.Uuid, attrValue(t, settled, types.AttributeKeyProviderUUID))
+	require.Equal(t, tenant.String(), attrValue(t, settled, types.AttributeKeyTenant))
+	require.Equal(t, "100"+denom, attrValue(t, settled, types.AttributeKeyAmount))
+	require.Equal(t, payoutAddr.String(), attrValue(t, settled, types.AttributeKeyPayoutAddress))
+
+	batch := findEvent(t, f.Ctx, types.EventTypeBatchWithdraw)
+	require.Equal(t, provider.Uuid, attrValue(t, batch, types.AttributeKeyProviderUUID))
+	require.Equal(t, "100"+denom, attrValue(t, batch, types.AttributeKeyAmount))
+	require.Equal(t, "1", attrValue(t, batch, types.AttributeKeyStreamCount))
+	require.Equal(t, payoutAddr.String(), attrValue(t, batch, types.AttributeKeyPayoutAddress))
+	require.Equal(t, "0", attrValue(t, batch, types.AttributeKeyExhaustedCount))
+
+	requireInvariants(t, f)
 }
 
-// TestMsgWithdrawBatch tests batch withdrawal operations.
+// TestMsgWithdrawBatch tests a withdrawal that covers several leases, and that
+// it only reaches the streams of the provider named by the message.
 func TestMsgWithdrawBatch(t *testing.T) {
 	f := initFixture(t)
 
@@ -1132,17 +1137,20 @@ func TestMsgWithdrawBatch(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	t.Run("success: batch withdraw from multiple leases", func(t *testing.T) {
-		// Create and acknowledge 3 leases
-		lease1 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: 1},
-		})
-		lease2 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: 1},
-		})
-		lease3 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: 1},
-		})
+	streamKey := keeper.NewStreamKey(provider.Uuid, tenant, denom)
+
+	t.Run("success: one withdrawal pays for every lease of the stream", func(t *testing.T) {
+		// Create and acknowledge 3 leases with different quantities: 1 + 2 + 3 = 6 umfx/sec
+		for _, quantity := range []uint64{1, 2, 3} {
+			f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+				{SkuUuid: sku.Uuid, Quantity: quantity},
+			})
+		}
+
+		stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+		require.NoError(t, err)
+		require.Equal(t, sdkmath.NewInt(6), stream.Rate)
+		require.Equal(t, uint64(3), stream.LeaseCount)
 
 		// Advance block time by 100 seconds
 		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
@@ -1151,62 +1159,82 @@ func TestMsgWithdrawBatch(t *testing.T) {
 		// Get initial balance
 		initialBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
 
-		// Withdraw from all 3 leases in one transaction
+		// The 3 leases share one stream, so they are paid by one settlement
 		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:     providerAddr.String(),
-			LeaseUuids: []string{lease1, lease2, lease3},
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, payoutAddr.String(), resp.PayoutAddress)
-		require.Equal(t, uint64(3), resp.WithdrawalCount)
-		require.False(t, resp.TotalAmounts.IsZero())
+		require.Equal(t, uint64(1), resp.WithdrawalCount, "withdrawal_count counts streams, not leases")
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(600))), resp.TotalAmounts)
 
-		// Verify total balance increased
+		// Verify the payout address received exactly the accrual of the 3 leases
 		newBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
-		require.True(t, newBalance.Amount.GT(initialBalance.Amount))
+		require.Equal(t, sdkmath.NewInt(600), newBalance.Amount.Sub(initialBalance.Amount))
+
+		stream, err = f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+		require.NoError(t, err)
+		require.Equal(t, f.Ctx.BlockTime(), stream.LastSettledAt)
+		requireInvariants(t, f)
 	})
 
-	t.Run("fail: mixed providers not allowed", func(t *testing.T) {
-		// Create another provider
+	t.Run("success: a withdrawal only settles the streams of its own provider", func(t *testing.T) {
+		// Create another provider with its own payout address and a lease of the same tenant
 		provider2Addr := f.TestAccs[3]
-		provider2 := f.createTestProvider(t, provider2Addr.String(), provider2Addr.String())
+		payout2Addr := f.TestAccs[4]
+		provider2 := f.createTestProvider(t, provider2Addr.String(), payout2Addr.String())
 		sku2 := f.createTestSKU(t, provider2.Uuid, 3600)
 
-		// Create lease for provider 1
-		lease1 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: 1},
-		})
-
-		// Create lease for provider 2
-		lease2 := f.createAndAcknowledgeLease(t, msgServer, tenant, provider2Addr, []types.LeaseItemInput{
+		f.createAndAcknowledgeLease(t, msgServer, tenant, provider2Addr, []types.LeaseItemInput{
 			{SkuUuid: sku2.Uuid, Quantity: 1},
 		})
+		stream2Key := keeper.NewStreamKey(provider2.Uuid, tenant, denom)
+		stream2Before, err := f.App.BillingKeeper.Streams.Get(f.Ctx, stream2Key)
+		require.NoError(t, err)
 
 		// Advance time
 		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 		f.Ctx = newCtx
 
-		// Try to withdraw from both - should fail (mixed providers)
-		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:     providerAddr.String(),
-			LeaseUuids: []string{lease1, lease2},
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "all leases must belong to same provider")
-	})
+		initialBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
 
-	t.Run("fail: duplicate UUIDs in request", func(t *testing.T) {
-		lease := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: 1},
+		// Provider 1 withdraws: it is paid for its own stream (6 umfx/sec) only
+		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
 		})
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), resp.WithdrawalCount)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(600))), resp.TotalAmounts)
+		require.Equal(t, sdkmath.NewInt(600),
+			f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom).Amount.Sub(initialBalance.Amount))
 
-		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:     providerAddr.String(),
-			LeaseUuids: []string{lease, lease},
+		// Provider 2's stream was left alone: nothing paid, nothing settled
+		require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, payout2Addr, denom).IsZero())
+		stream2, err := f.App.BillingKeeper.Streams.Get(f.Ctx, stream2Key)
+		require.NoError(t, err)
+		require.Equal(t, stream2Before.LastSettledAt, stream2.LastSettledAt)
+
+		// Provider 1 cannot withdraw on behalf of provider 2
+		_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider2.Uuid,
 		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "duplicate")
+		require.ErrorIs(t, err, types.ErrUnauthorized)
+		require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, payout2Addr, denom).IsZero())
+
+		// Provider 2 is still owed the whole 100 seconds
+		resp, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       provider2Addr.String(),
+			ProviderUuid: provider2.Uuid,
+		})
+		require.NoError(t, err)
+		require.Equal(t, payout2Addr.String(), resp.PayoutAddress)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(100))), resp.TotalAmounts)
+		require.Equal(t, sdkmath.NewInt(100), f.App.BankKeeper.GetBalance(f.Ctx, payout2Addr, denom).Amount)
+		requireInvariants(t, f)
 	})
 }
 
@@ -1246,32 +1274,127 @@ func TestMsgWithdraw_ErrorCases(t *testing.T) {
 		},
 	})
 
-	t.Run("fail: withdraw from non-existent lease", func(t *testing.T) {
-		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:     providerAddr.String(),
-			LeaseUuids: []string{"01912345-6789-7abc-8def-999999999999"},
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "not found")
-	})
+	// Let the stream accrue, so a withdrawal that wrongly went through would pay out.
+	streamKey := keeper.NewStreamKey(provider.Uuid, tenant, denom)
+	streamBefore, err := f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+	require.NoError(t, err)
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 
-	t.Run("fail: unauthorized user cannot withdraw", func(t *testing.T) {
-		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:     unauthorizedUser.String(),
-			LeaseUuids: []string{leaseID},
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "unauthorized")
-	})
+	tests := []struct {
+		name        string
+		msg         *types.MsgWithdraw
+		wantErr     error
+		errContains string
+	}{
+		{
+			name: "fail: provider does not exist",
+			msg: &types.MsgWithdraw{
+				Sender:       providerAddr.String(),
+				ProviderUuid: "01912345-6789-7abc-8def-999999999999",
+			},
+			wantErr:     types.ErrProviderNotFound,
+			errContains: "not found",
+		},
+		{
+			name: "fail: malformed provider uuid",
+			msg: &types.MsgWithdraw{
+				Sender:       providerAddr.String(),
+				ProviderUuid: "not-a-uuid",
+			},
+			wantErr:     types.ErrProviderNotFound,
+			errContains: "invalid provider_uuid format",
+		},
+		{
+			name: "fail: provider_uuid is required",
+			msg: &types.MsgWithdraw{
+				Sender: providerAddr.String(),
+			},
+			wantErr:     types.ErrInvalidRequest,
+			errContains: "provider_uuid is required",
+		},
+		{
+			name: "fail: lease_uuids is rejected even alongside provider_uuid",
+			msg: &types.MsgWithdraw{
+				Sender:       providerAddr.String(),
+				LeaseUuids:   []string{leaseID}, //nolint:staticcheck // exercising the deprecated field
+				ProviderUuid: provider.Uuid,
+			},
+			wantErr:     types.ErrInvalidRequest,
+			errContains: "lease_uuids is no longer supported",
+		},
+		{
+			name: "fail: invalid sender address",
+			msg: &types.MsgWithdraw{
+				Sender:       "not-an-address",
+				ProviderUuid: provider.Uuid,
+			},
+			wantErr:     types.ErrUnauthorized,
+			errContains: "invalid sender address",
+		},
+		{
+			name: "fail: unauthorized user cannot withdraw",
+			msg: &types.MsgWithdraw{
+				Sender:       unauthorizedUser.String(),
+				ProviderUuid: provider.Uuid,
+			},
+			wantErr:     types.ErrUnauthorized,
+			errContains: "not authorized",
+		},
+		{
+			name: "fail: tenant cannot withdraw (not provider or authority)",
+			msg: &types.MsgWithdraw{
+				Sender:       tenant.String(),
+				ProviderUuid: provider.Uuid,
+			},
+			wantErr:     types.ErrUnauthorized,
+			errContains: "not authorized",
+		},
+		{
+			name: "fail: payout address cannot withdraw (not provider or authority)",
+			msg: &types.MsgWithdraw{
+				Sender:       payoutAddr.String(),
+				ProviderUuid: provider.Uuid,
+			},
+			wantErr:     types.ErrUnauthorized,
+			errContains: "not authorized",
+		},
+		{
+			name: "fail: limit above the maximum",
+			msg: &types.MsgWithdraw{
+				Sender:       providerAddr.String(),
+				ProviderUuid: provider.Uuid,
+				Limit:        types.MaxBatchLeaseSize + 1,
+			},
+			wantErr:     types.ErrInvalidLease,
+			errContains: "exceeds maximum allowed",
+		},
+		{
+			name: "fail: oversized pagination key",
+			msg: &types.MsgWithdraw{
+				Sender:       providerAddr.String(),
+				ProviderUuid: provider.Uuid,
+				Key:          make([]byte, types.MaxWithdrawCursorLen+1),
+			},
+			wantErr:     types.ErrInvalidRequest,
+			errContains: "exceeds maximum",
+		},
+	}
 
-	t.Run("fail: tenant cannot withdraw (not provider or authority)", func(t *testing.T) {
-		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:     tenant.String(),
-			LeaseUuids: []string{leaseID},
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := msgServer.Withdraw(f.Ctx, tc.msg)
+			require.ErrorIs(t, err, tc.wantErr)
+			require.ErrorContains(t, err, tc.errContains)
+			require.Nil(t, resp)
+
+			// A rejected withdrawal pays nothing and settles nothing.
+			require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom).IsZero())
+			require.Equal(t, fundAmount, f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom))
+			stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+			require.NoError(t, err)
+			require.Equal(t, streamBefore, stream)
 		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "unauthorized")
-	})
+	}
 }
 
 // TestMsgWithdraw_PartialCreditExhaustion tests withdrawal when credit is partially exhausted.
@@ -1319,26 +1442,86 @@ func TestMsgWithdraw_PartialCreditExhaustion(t *testing.T) {
 		},
 	})
 
+	acknowledgedAt := f.Ctx.BlockTime()
+	streamKey := keeper.NewStreamKey(provider.Uuid, tenant, denom)
+
 	// Advance block time by 100 seconds (should accrue 100 units, but only 50 available)
 	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 	f.Ctx = newCtx
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
 
-	// Provider withdraws - should only get up to 50 (the available credit)
+	// Provider withdraws - should only get the 50 of available credit
 	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender:     providerAddr.String(),
-		LeaseUuids: []string{leaseID},
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+	require.Equal(t, sdk.NewCoins(limitedFund), resp.TotalAmounts)
+	require.Equal(t, uint64(1), resp.WithdrawalCount)
 
-	// Verify provider's payout address received funds
+	// Verify provider's payout address received all the credit that was left, and no more
 	payoutBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
-	require.True(t, payoutBalance.Amount.IsPositive(), "provider should have received some funds")
-	require.True(t, payoutBalance.Amount.LTE(sdkmath.NewInt(50)), "provider should not receive more than credit balance")
+	require.Equal(t, sdkmath.NewInt(50), payoutBalance.Amount, "provider should receive exactly the credit balance")
 
-	// Verify credit balance decreased
+	// Verify the credit is spent
 	creditBalance := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
-	require.True(t, creditBalance.Amount.LT(sdkmath.NewInt(50)), "credit balance should have decreased")
+	require.True(t, creditBalance.Amount.IsZero(), "credit balance should be exhausted")
+
+	// The withdrawal freezes the stream; it does not close the lease itself.
+	stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+	require.NoError(t, err)
+	require.True(t, stream.IsExhausted())
+	require.Equal(t, f.Ctx.BlockTime(), *stream.ExhaustedAt)
+	require.Equal(t, acknowledgedAt.Add(100*time.Second), stream.LastSettledAt)
+	require.Equal(t, uint64(1), stream.LeaseCount)
+
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State, "no lease is closed inside the withdraw tx")
+
+	require.Equal(t, 1, countEvents(f.Ctx, types.EventTypeStreamExhausted))
+	require.Zero(t, countEvents(f.Ctx, types.EventTypeLeaseAutoClose))
+	exhausted := findEvent(t, f.Ctx, types.EventTypeStreamExhausted)
+	require.Equal(t, provider.Uuid, attrValue(t, exhausted, types.AttributeKeyProviderUUID))
+	require.Equal(t, tenant.String(), attrValue(t, exhausted, types.AttributeKeyTenant))
+	require.Equal(t, denom, attrValue(t, exhausted, types.AttributeKeyDenom))
+	batch := findEvent(t, f.Ctx, types.EventTypeBatchWithdraw)
+	require.Equal(t, "50"+denom, attrValue(t, batch, types.AttributeKeyAmount))
+	require.Equal(t, "1", attrValue(t, batch, types.AttributeKeyExhaustedCount))
+	requireInvariants(t, f)
+
+	// A second withdrawal finds a frozen stream: nothing accrues, nothing is paid.
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+	resp, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.TotalAmounts.IsZero())
+	require.Zero(t, resp.WithdrawalCount)
+
+	// The EndBlocker closes the lease of the frozen stream.
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+	require.NoError(t, f.App.BillingKeeper.EndBlocker(f.Ctx))
+	require.Equal(t, 1, countEvents(f.Ctx, types.EventTypeLeaseAutoClose))
+
+	lease, err = f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+	require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason)
+	require.NotNil(t, lease.ClosedAt)
+	require.Equal(t, f.Ctx.BlockTime(), *lease.ClosedAt)
+
+	_, err = f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
+	require.ErrorIs(t, err, collections.ErrNotFound)
+
+	creditAccount, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+	require.NoError(t, err)
+	require.Zero(t, creditAccount.ActiveLeaseCount)
+	require.True(t, creditAccount.ReservedAmounts.IsZero(), "the reservation is released with the lease")
+	require.Equal(t, sdkmath.NewInt(50), f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom).Amount)
+	requireInvariants(t, f)
 }
 
 // TestMsgWithdraw_ZeroDuration tests withdrawal with zero elapsed time.
@@ -1380,14 +1563,48 @@ func TestMsgWithdraw_ZeroDuration(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// DO NOT advance block time - withdraw immediately
-	// With zero duration, there's nothing to withdraw, so it should error
-	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender:     providerAddr.String(),
-		LeaseUuids: []string{createResp.LeaseUuid},
+	// requireNothingWithdrawn withdraws and checks that nothing was paid.
+	requireNothingWithdrawn := func(t *testing.T) {
+		t.Helper()
+		f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
+		})
+		require.NoError(t, err)
+		require.True(t, resp.TotalAmounts.IsZero())
+		require.Zero(t, resp.WithdrawalCount)
+		require.False(t, resp.HasMore)
+		require.Empty(t, resp.NextKey)
+		require.Zero(t, countEvents(f.Ctx, types.EventTypeStreamSettled))
+		require.Zero(t, countEvents(f.Ctx, "transfer"))
+		require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom).IsZero())
+		require.Equal(t, fundAmount, f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom))
+	}
+
+	t.Run("a pending lease has no stream to settle", func(t *testing.T) {
+		// Billing starts at acknowledgement, however long the lease stays pending.
+		f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+		requireNothingWithdrawn(t)
 	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "no withdrawable amount")
+
+	t.Run("an acknowledged lease has accrued nothing in the same block", func(t *testing.T) {
+		_, err := msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
+			Sender:     providerAddr.String(),
+			LeaseUuids: []string{createResp.LeaseUuid},
+		})
+		require.NoError(t, err)
+
+		// DO NOT advance block time - withdraw immediately
+		// With zero duration, there's nothing to withdraw
+		requireNothingWithdrawn(t)
+
+		stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, denom))
+		require.NoError(t, err)
+		require.Equal(t, f.Ctx.BlockTime(), stream.LastSettledAt)
+		require.False(t, stream.IsExhausted(), "a funded stream with nothing accrued is not exhausted")
+		requireInvariants(t, f)
+	})
 }
 
 // TestMsgCloseLease_WithSettlement tests lease closure with settlement.
@@ -1431,6 +1648,7 @@ func TestMsgCloseLease_WithSettlement(t *testing.T) {
 	// Advance block time by 100 seconds
 	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 	f.Ctx = newCtx
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
 
 	// Close lease (should settle outstanding amount)
 	closeResp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
@@ -1440,17 +1658,40 @@ func TestMsgCloseLease_WithSettlement(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, closeResp)
 	require.Equal(t, uint64(1), closeResp.ClosedCount)
+	require.Equal(t, f.Ctx.BlockTime(), closeResp.ClosedAt)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(100))), closeResp.TotalSettledAmounts,
+		"1/s for 100 seconds")
 
 	// Verify lease is closed
 	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
 	require.NoError(t, err)
 	require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
 	require.NotNil(t, lease.ClosedAt)
+	require.Equal(t, f.Ctx.BlockTime(), *lease.ClosedAt)
+	require.Empty(t, lease.ClosureReason, "a fully paid close without a reason records none")
 
-	// Verify provider received settled funds during closure
+	// Verify provider received exactly the accrued amount during closure
 	finalPayoutBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
-	require.True(t, finalPayoutBalance.Amount.GT(initialPayoutBalance.Amount),
+	require.Equal(t, sdkmath.NewInt(100), finalPayoutBalance.Amount.Sub(initialPayoutBalance.Amount),
 		"provider should have received settlement during close")
+	require.Equal(t, fundAmount.Amount.SubRaw(100), f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom).Amount)
+
+	// The lease was the stream's last one, so the stream is gone
+	_, err = f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, denom))
+	require.ErrorIs(t, err, collections.ErrNotFound)
+
+	// The settlement is reported by stream_settled; lease_closed no longer carries amounts
+	settled := findEvent(t, f.Ctx, types.EventTypeStreamSettled)
+	require.Equal(t, "100"+denom, attrValue(t, settled, types.AttributeKeyAmount))
+	require.Equal(t, payoutAddr.String(), attrValue(t, settled, types.AttributeKeyPayoutAddress))
+	closed := findEvent(t, f.Ctx, types.EventTypeLeaseClosed)
+	require.Equal(t, leaseID, attrValue(t, closed, types.AttributeKeyLeaseUUID))
+	require.Equal(t, types.AttributeValueRoleTenant, attrValue(t, closed, types.AttributeKeyClosedBy))
+	for _, attr := range closed.Attributes {
+		require.NotEqual(t, types.AttributeKeySettledAmounts, attr.Key)
+		require.NotEqual(t, "duration_seconds", attr.Key)
+	}
+	requireInvariants(t, f)
 }
 
 // TestMsgCloseLease_PartialSettlement tests lease closure with partial credit.
@@ -1509,6 +1750,7 @@ func TestMsgCloseLease_PartialSettlement(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, closeResp)
 	require.Equal(t, uint64(1), closeResp.ClosedCount)
+	require.Equal(t, sdk.NewCoins(limitedFund), closeResp.TotalSettledAmounts)
 
 	// Verify provider received 30 (all available credit)
 	payoutBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
@@ -1517,12 +1759,27 @@ func TestMsgCloseLease_PartialSettlement(t *testing.T) {
 	// Verify credit balance is now zero
 	creditBalance := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
 	require.True(t, creditBalance.Amount.IsZero())
+
+	// The unpaid remainder makes this a credit exhaustion, whoever asked for the close
+	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+	require.NoError(t, err)
+	require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+	require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason)
+
+	// The close removed the stream it froze, so nothing is left for the EndBlocker
+	_, err = f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, denom))
+	require.ErrorIs(t, err, collections.ErrNotFound)
+	requireInvariants(t, f)
+
+	f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+	require.NoError(t, f.App.BillingKeeper.EndBlocker(f.Ctx))
+	require.Zero(t, countEvents(f.Ctx, types.EventTypeLeaseAutoClose))
 }
 
 // TestMsgCloseLease_CreditExhaustionLabelling verifies that a voluntary close is
 // only recorded as credit_exhausted on a genuine shortfall. When the tenant's
 // credit exactly covers the accrued charges — the accrued == balance case that
-// ShouldAutoCloseLease's GTE boundary also treats as exhaustion — the caller's
+// the stream's GTE freeze boundary also treats as exhaustion — the caller's
 // reason and role must be preserved. Regression for ENG-577.
 func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 	f := initFixture(t)
@@ -1628,6 +1885,9 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
 		require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason,
 			"an under-funded close is a genuine credit exhaustion")
+		require.Equal(t, "credit_exhaustion", closedEventBy(leaseID),
+			"closed_by must name credit exhaustion, not the caller role")
+		requireInvariants(t, f)
 	})
 
 	t.Run("batch: earlier lease drawdown does not mislabel a fully-paid later lease", func(t *testing.T) {
@@ -1644,23 +1904,61 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 		f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 
 		const reason = "planned-teardown"
-		_, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		resp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
 			Sender:     tenant.String(),
 			LeaseUuids: []string{leaseA, leaseB},
 			Reason:     reason,
 		})
 		require.NoError(t, err)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(200))), resp.TotalSettledAmounts)
 
-		// Both leases are fully paid (200 credit == 200 accrued total). Closing A
-		// first drains the shared balance so B settles at exactly zero remaining,
-		// which must NOT be relabelled as credit exhaustion.
+		// Both leases are fully paid (200 credit == 200 accrued total). They share
+		// one stream, which is settled once for the message and drains the balance
+		// to exactly zero; neither lease may be relabelled as credit exhaustion,
+		// whatever its position in the batch.
 		for _, id := range []string{leaseA, leaseB} {
 			lease, err := f.App.BillingKeeper.GetLease(f.Ctx, id)
 			require.NoError(t, err)
 			require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
 			require.Equal(t, reason, lease.ClosureReason,
 				"lease %s: batch drawdown must not relabel a fully-paid close", id)
+			require.Equal(t, types.AttributeValueRoleTenant, closedEventBy(id))
 		}
+		requireInvariants(t, f)
+	})
+
+	t.Run("batch: a shortfall labels every lease of the stream, whatever its position", func(t *testing.T) {
+		// tenant4's earlier leases are closed; re-fund it one unit short of two
+		// 1/s leases over 100s.
+		tenant := f.TestAccs[4]
+		fundTenant(t, tenant, 199)
+
+		leaseA := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		})
+		leaseB := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 1},
+		})
+
+		f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+
+		resp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+			Sender:     tenant.String(),
+			LeaseUuids: []string{leaseA, leaseB},
+			Reason:     "should-be-overridden",
+		})
+		require.NoError(t, err)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(199))), resp.TotalSettledAmounts)
+
+		// Per-lease settlement would have paid lease A in full and labelled only B.
+		// The stream is settled once, so both leases see the same shortfall.
+		for _, id := range []string{leaseA, leaseB} {
+			lease, err := f.App.BillingKeeper.GetLease(f.Ctx, id)
+			require.NoError(t, err)
+			require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+			require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason, "lease %s", id)
+		}
+		requireInvariants(t, f)
 	})
 
 	t.Run("overflow: an unsettled-for-a-century lease is still credit_exhausted", func(t *testing.T) {
@@ -1672,27 +1970,31 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 			{SkuUuid: sku.Uuid, Quantity: 1},
 		})
 
-		// Force the lease to look >100 years unsettled so accrual overflows.
-		// PerformSettlementSilent then clamps the accrued amount to the remaining
-		// balance and transfers it all (so the unpaid remainder reads zero) — the
-		// close must still be recorded as credit exhaustion, not the caller reason.
-		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+		// Force the stream to look >100 years unsettled so accrual overflows.
+		// The settlement then clamps the accrued amount to the remaining balance
+		// and transfers it all (so the unpaid remainder reads zero) — the close
+		// must still be recorded as credit exhaustion, not the caller reason.
+		streamKey := keeper.NewStreamKey(provider.Uuid, tenant, denom)
+		stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, streamKey)
 		require.NoError(t, err)
-		lease.LastSettledAt = f.Ctx.BlockTime().Add(-time.Duration(keeper.MaxDurationSeconds+10) * time.Second)
-		require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
+		stream.LastSettledAt = f.Ctx.BlockTime().Add(-time.Duration(keeper.MaxDurationSeconds+10) * time.Second)
+		require.NoError(t, f.App.BillingKeeper.Streams.Set(f.Ctx, streamKey, stream))
 
-		_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		resp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
 			Sender:     tenant.String(),
 			LeaseUuids: []string{leaseID},
 			Reason:     "should-be-credit-exhausted",
 		})
 		require.NoError(t, err)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(5000))), resp.TotalSettledAmounts,
+			"an unrepresentable accrual transfers everything that remains")
 
 		closed, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
 		require.NoError(t, err)
 		require.Equal(t, types.LEASE_STATE_CLOSED, closed.State)
 		require.Equal(t, types.ClosureReasonCreditExhausted, closed.ClosureReason,
 			"an overflow-driven close (accrued beyond representable range) is genuine exhaustion")
+		requireInvariants(t, f)
 	})
 
 	t.Run("zero balance with zero elapsed time is still credit_exhausted", func(t *testing.T) {
@@ -1707,19 +2009,20 @@ func TestMsgCloseLease_CreditExhaustionLabelling(t *testing.T) {
 		})
 
 		// Drain the credit balance to zero WITHOUT advancing block time, so the
-		// close sees duration == 0 and a zero balance. ShouldAutoCloseLease flags
-		// this via its zero-balance branch, but PerformSettlementSilent accrues and
-		// transfers nothing (duration == 0), so there is no unpaid remainder — the
-		// close must still be recorded as genuine credit exhaustion, not the reason.
+		// close sees duration == 0 and a zero balance. The stream freezes on its
+		// GTE boundary (0 >= 0), but the settlement accrues and transfers nothing
+		// (duration == 0), so there is no unpaid remainder — the close must still
+		// be recorded as genuine credit exhaustion, not the reason.
 		bal := f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom)
 		require.NoError(t, f.App.BankKeeper.SendCoins(f.Ctx, creditAddr, payoutAddr, sdk.NewCoins(bal)))
 
-		_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+		resp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
 			Sender:     tenant.String(),
 			LeaseUuids: []string{leaseID},
 			Reason:     "should-be-credit-exhausted",
 		})
 		require.NoError(t, err)
+		require.True(t, resp.TotalSettledAmounts.IsZero())
 
 		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
 		require.NoError(t, err)
@@ -1776,11 +2079,15 @@ func TestMsgCloseLease_ProviderClose(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, closeResp)
 	require.Equal(t, uint64(1), closeResp.ClosedCount)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(50))), closeResp.TotalSettledAmounts,
+		"1/s for 50 seconds")
+	require.Equal(t, sdkmath.NewInt(50), f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom).Amount)
 
 	// Verify lease is closed
 	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
 	require.NoError(t, err)
 	require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+	requireInvariants(t, f)
 }
 
 // TestMsgCloseLease_AuthorityClose tests that authority can close any lease.
@@ -1826,11 +2133,13 @@ func TestMsgCloseLease_AuthorityClose(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, closeResp)
 	require.Equal(t, uint64(1), closeResp.ClosedCount)
+	require.True(t, closeResp.TotalSettledAmounts.IsZero(), "closed in the block it was acknowledged in")
 
 	// Verify lease is closed
 	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
 	require.NoError(t, err)
 	require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+	requireInvariants(t, f)
 }
 
 // TestMsgCloseLease_ErrorCases tests error scenarios for CloseLease.
@@ -1975,8 +2284,13 @@ func TestMsgCloseLeaseBatch(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, uint64(3), resp.ClosedCount)
-		require.False(t, resp.ClosedAt.IsZero())
-		require.False(t, resp.TotalSettledAmounts.IsZero(), "should have settled amounts")
+		require.Equal(t, f.Ctx.BlockTime(), resp.ClosedAt)
+		// The 3 leases share one stream: (1 + 2 + 3) umfx/sec for 10 seconds, paid once.
+		settledAmounts := sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(60)))
+		require.Equal(t, settledAmounts, resp.TotalSettledAmounts)
+		require.Equal(t, sdkmath.NewInt(60), f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom).Amount)
+		require.Equal(t, 1, countEvents(f.Ctx, types.EventTypeStreamSettled), "one settlement for the whole batch")
+		require.Equal(t, 1, countEvents(f.Ctx, "transfer"), "one bank transfer for the whole batch")
 
 		// Verify all leases are now CLOSED
 		for _, uuid := range []string{lease1, lease2, lease3} {
@@ -1997,15 +2311,17 @@ func TestMsgCloseLeaseBatch(t *testing.T) {
 			case types.EventTypeBatchClosed:
 				batchEventCount++
 				// Verify batch event attributes
-				for _, attr := range event.Attributes {
-					if attr.Key == types.AttributeKeyLeaseCount {
-						require.Equal(t, "3", attr.Value)
-					}
-				}
+				require.Equal(t, "3", attrValue(t, event, types.AttributeKeyLeaseCount))
+				require.Equal(t, settledAmounts.String(), attrValue(t, event, types.AttributeKeySettledAmounts))
 			}
 		}
 		require.Equal(t, 3, perLeaseEventCount, "should emit 3 per-lease events")
 		require.Equal(t, 1, batchEventCount, "should emit 1 batch summary event")
+
+		// The stream lost its last lease and is deleted
+		_, err = f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, denom))
+		require.ErrorIs(t, err, collections.ErrNotFound)
+		requireInvariants(t, f)
 	})
 
 	t.Run("success: provider closes multiple leases", func(t *testing.T) {
@@ -2132,6 +2448,14 @@ func TestMsgCloseLeaseBatch(t *testing.T) {
 			{SkuUuid: sku3.Uuid, Quantity: 1},
 		})
 
+		// The earlier subtests left 3 of this tenant's umfx leases with this
+		// provider ACTIVE (1 umfx/sec each), so lease1 joined a stream of 4.
+		umfxKey := keeper.NewStreamKey(provider.Uuid, tenant, denom)
+		umfxStream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, umfxKey)
+		require.NoError(t, err)
+		require.Equal(t, sdkmath.NewInt(4), umfxStream.Rate)
+		require.Equal(t, uint64(4), umfxStream.LeaseCount)
+
 		// Advance time
 		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(10 * time.Second))
 		f.Ctx = newCtx
@@ -2144,8 +2468,23 @@ func TestMsgCloseLeaseBatch(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(2), resp.ClosedCount)
 
-		// TotalSettledAmounts should contain entries for both denoms
-		require.True(t, len(resp.TotalSettledAmounts) >= 1, "should have at least one settled denom")
+		// TotalSettledAmounts is what the touched streams paid: closing one lease
+		// of the umfx stream settles all 4 of its leases (4 × 10), and the upwr
+		// stream held lease2 alone (1 × 10).
+		require.Equal(t, sdk.NewCoins(
+			sdk.NewCoin(denom, sdkmath.NewInt(40)),
+			sdk.NewCoin(testDenom2, sdkmath.NewInt(10)),
+		), resp.TotalSettledAmounts)
+
+		// The umfx stream keeps its 3 other leases; the upwr stream is gone.
+		umfxStream, err = f.App.BillingKeeper.Streams.Get(f.Ctx, umfxKey)
+		require.NoError(t, err)
+		require.Equal(t, sdkmath.NewInt(3), umfxStream.Rate)
+		require.Equal(t, uint64(3), umfxStream.LeaseCount)
+		require.Equal(t, f.Ctx.BlockTime(), umfxStream.LastSettledAt)
+		_, err = f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom2))
+		require.ErrorIs(t, err, collections.ErrNotFound)
+		requireInvariants(t, f)
 	})
 }
 
@@ -2184,49 +2523,40 @@ func TestMsgWithdraw_FromClosedLease(t *testing.T) {
 		},
 	})
 
-	// Close the lease
-	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
+	// Let the lease accrue, then close it: the close settles its stream
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+	closeResp, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
 		Sender:     tenant.String(),
 		LeaseUuids: []string{leaseID},
 	})
 	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(100))), closeResp.TotalSettledAmounts)
 
 	// Verify the lease is closed
 	lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
 	require.NoError(t, err)
 	require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
 
-	// Try to withdraw from closed lease - should fail (no withdrawable amount since already closed)
-	_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender:     providerAddr.String(),
-		LeaseUuids: []string{leaseID},
+	// A closed lease has left its stream: however much time passes, a later
+	// withdrawal finds nothing to pay and the lease is not billed past its close.
+	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+	resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		Sender:       providerAddr.String(),
+		ProviderUuid: provider.Uuid,
 	})
-	require.Error(t, err, "should fail to withdraw from closed lease")
+	require.NoError(t, err)
+	require.True(t, resp.TotalAmounts.IsZero())
+	require.Zero(t, resp.WithdrawalCount)
+	require.False(t, resp.HasMore)
+
+	require.Equal(t, sdkmath.NewInt(100), f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom).Amount)
+	require.Equal(t, fundAmount.Amount.SubRaw(100), f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom).Amount)
+	requireInvariants(t, f)
 }
 
 // =============================================================================
 // Multi-Denom Tests
 // =============================================================================
-
-// createTestSKUWithDenom creates a SKU with a specific denom for testing multi-denom scenarios.
-func (f *testFixture) createTestSKUWithDenom(t *testing.T, providerUUID string, priceAmount int64, denom string) skutypes.SKU {
-	t.Helper()
-
-	skuUUID, err := f.App.SKUKeeper.GenerateSKUUUID(f.Ctx)
-	require.NoError(t, err)
-
-	sku := skutypes.SKU{
-		Uuid:         skuUUID,
-		ProviderUuid: providerUUID,
-		Name:         "Test SKU " + denom,
-		Unit:         skutypes.Unit_UNIT_PER_HOUR,
-		BasePrice:    sdk.NewCoin(denom, sdkmath.NewInt(priceAmount)),
-		Active:       true,
-	}
-	err = f.App.SKUKeeper.SetSKU(f.Ctx, sku)
-	require.NoError(t, err)
-	return sku
-}
 
 // TestMsgCreateLease_MultiDenom tests lease creation with SKUs using different denoms.
 func TestMsgCreateLease_MultiDenom(t *testing.T) {
@@ -2373,25 +2703,43 @@ func TestMsgWithdraw_MultiDenom(t *testing.T) {
 		initialBalance1 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
 		initialBalance2 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom2)
 
+		f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
 		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:     providerAddr.String(),
-			LeaseUuids: []string{leaseID},
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, payoutAddr.String(), resp.PayoutAddress)
 
-		// Verify provider received both denoms
-		require.False(t, resp.TotalAmounts.IsZero())
+		// Verify provider received both denoms: the lease belongs to one stream per denom
+		require.Equal(t, sdk.NewCoins(
+			sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+			sdk.NewCoin(testDenom2, sdkmath.NewInt(200)),
+		), resp.TotalAmounts)
+		require.Equal(t, uint64(2), resp.WithdrawalCount, "one lease, two streams")
+		require.Equal(t, 2, countEvents(f.Ctx, types.EventTypeStreamSettled))
 
-		// Check actual balances increased
+		// Check actual balances increased by exactly the accrued amounts
 		newBalance1 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
 		newBalance2 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom2)
 
-		require.True(t, newBalance1.Amount.GT(initialBalance1.Amount),
+		require.Equal(t, sdkmath.NewInt(100), newBalance1.Amount.Sub(initialBalance1.Amount),
 			"provider should receive testDenom funds")
-		require.True(t, newBalance2.Amount.GT(initialBalance2.Amount),
+		require.Equal(t, sdkmath.NewInt(200), newBalance2.Amount.Sub(initialBalance2.Amount),
 			"provider should receive testDenom2 funds")
+
+		// Both streams are settled up to now, and the lease stays active
+		for _, streamDenom := range []string{testDenom, testDenom2} {
+			stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, streamDenom))
+			require.NoError(t, err)
+			require.Equal(t, f.Ctx.BlockTime(), stream.LastSettledAt)
+			require.Equal(t, uint64(1), stream.LeaseCount)
+		}
+		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+		requireInvariants(t, f)
 	})
 }
 
@@ -2447,6 +2795,10 @@ func TestMsgCloseLease_MultiDenom_Settlement(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, uint64(1), resp.ClosedCount)
+		require.Equal(t, sdk.NewCoins(
+			sdk.NewCoin(testDenom, sdkmath.NewInt(100)),
+			sdk.NewCoin(testDenom2, sdkmath.NewInt(200)),
+		), resp.TotalSettledAmounts)
 
 		// Verify lease is closed
 		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseID)
@@ -2457,10 +2809,17 @@ func TestMsgCloseLease_MultiDenom_Settlement(t *testing.T) {
 		newBalance1 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
 		newBalance2 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom2)
 
-		require.True(t, newBalance1.Amount.GT(initialBalance1.Amount),
+		require.Equal(t, sdkmath.NewInt(100), newBalance1.Amount.Sub(initialBalance1.Amount),
 			"provider should receive testDenom settlement")
-		require.True(t, newBalance2.Amount.GT(initialBalance2.Amount),
+		require.Equal(t, sdkmath.NewInt(200), newBalance2.Amount.Sub(initialBalance2.Amount),
 			"provider should receive testDenom2 settlement")
+
+		// The lease left both of its streams, which are deleted
+		for _, streamDenom := range []string{testDenom, testDenom2} {
+			_, err := f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, streamDenom))
+			require.ErrorIs(t, err, collections.ErrNotFound)
+		}
+		requireInvariants(t, f)
 	})
 }
 
@@ -2631,6 +2990,16 @@ func TestMsgAcknowledgeLease(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
 		require.NotNil(t, lease.AcknowledgedAt)
+		require.Nil(t, lease.LastSettledAt, "the deprecated field is never set") //nolint:staticcheck // asserting the deprecated field stays unset
+
+		// Verify the lease joined its stream: billing starts at acknowledgement
+		stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, testDenom))
+		require.NoError(t, err)
+		require.Equal(t, sdkmath.NewInt(1), stream.Rate)
+		require.Equal(t, uint64(1), stream.LeaseCount)
+		require.Equal(t, f.Ctx.BlockTime(), stream.LastSettledAt)
+		require.False(t, stream.IsExhausted())
+		requireInvariants(t, f)
 
 		// Verify single lease does NOT emit batch event
 		events := f.Ctx.EventManager().Events()
@@ -2792,6 +3161,14 @@ func TestMsgAcknowledgeLeaseBatch(t *testing.T) {
 		}
 		require.Equal(t, 3, perLeaseEventCount, "should emit 3 per-lease events")
 		require.Equal(t, 1, batchEventCount, "should emit 1 batch summary event")
+
+		// Verify the 3 leases joined one stream: (1 + 2 + 3) umfx/sec
+		stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, denom))
+		require.NoError(t, err)
+		require.Equal(t, sdkmath.NewInt(6), stream.Rate)
+		require.Equal(t, uint64(3), stream.LeaseCount)
+		require.Equal(t, f.Ctx.BlockTime(), stream.LastSettledAt)
+		requireInvariants(t, f)
 	})
 
 	t.Run("fail: mixed providers", func(t *testing.T) {
@@ -2859,6 +3236,13 @@ func TestMsgAcknowledgeLeaseBatch(t *testing.T) {
 		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, pendingLease.LeaseUuid)
 		require.NoError(t, err)
 		require.Equal(t, types.LEASE_STATE_PENDING, lease.State)
+
+		// The failed batch left the stream as it was: the pending lease did not join it
+		stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, denom))
+		require.NoError(t, err)
+		require.Equal(t, sdkmath.NewInt(7), stream.Rate, "the 3 leases of the first subtest and the one acknowledged here")
+		require.Equal(t, uint64(4), stream.LeaseCount)
+		requireInvariants(t, f)
 	})
 
 	t.Run("fail: empty lease list", func(t *testing.T) {
@@ -2900,8 +3284,7 @@ func TestMsgAcknowledgeLeaseBatch(t *testing.T) {
 			Items: []types.LeaseItem{
 				{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewInt64Coin(denom, 3600)},
 			},
-			CreatedAt:     f.Ctx.BlockTime(),
-			LastSettledAt: f.Ctx.BlockTime(),
+			CreatedAt: f.Ctx.BlockTime(),
 		}
 		err := f.App.BillingKeeper.SetLease(f.Ctx, orphanLease)
 		require.NoError(t, err)
@@ -4098,7 +4481,6 @@ func TestEndBlockerRateLimiting(t *testing.T) {
 			},
 			State:          types.LEASE_STATE_PENDING,
 			CreatedAt:      baseTime, // All created at same time
-			LastSettledAt:  baseTime,
 			AcknowledgedAt: nil,
 			ClosedAt:       nil,
 			ExpiredAt:      nil,
@@ -4192,13 +4574,12 @@ func TestEndBlockerIteratorDoesNotLoadAll(t *testing.T) {
 		expiredLeaseUUIDs[i] = leaseUUID
 
 		lease := types.Lease{
-			Uuid:          leaseUUID,
-			Tenant:        tenant.String(),
-			ProviderUuid:  provider.Uuid,
-			Items:         []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
-			State:         types.LEASE_STATE_PENDING,
-			CreatedAt:     baseTime, // Will be expired
-			LastSettledAt: baseTime,
+			Uuid:         leaseUUID,
+			Tenant:       tenant.String(),
+			ProviderUuid: provider.Uuid,
+			Items:        []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
+			State:        types.LEASE_STATE_PENDING,
+			CreatedAt:    baseTime, // Will be expired
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -4212,13 +4593,12 @@ func TestEndBlockerIteratorDoesNotLoadAll(t *testing.T) {
 		notExpiredLeaseUUIDs[i] = leaseUUID
 
 		lease := types.Lease{
-			Uuid:          leaseUUID,
-			Tenant:        tenant.String(),
-			ProviderUuid:  provider.Uuid,
-			Items:         []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
-			State:         types.LEASE_STATE_PENDING,
-			CreatedAt:     futureTime, // Created 30s later, won't be expired yet
-			LastSettledAt: futureTime,
+			Uuid:         leaseUUID,
+			Tenant:       tenant.String(),
+			ProviderUuid: provider.Uuid,
+			Items:        []types.LeaseItem{{SkuUuid: sku.Uuid, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
+			State:        types.LEASE_STATE_PENDING,
+			CreatedAt:    futureTime, // Created 30s later, won't be expired yet
 		}
 		err := k.SetLease(f.Ctx, lease)
 		require.NoError(t, err)
@@ -4258,66 +4638,6 @@ func TestEndBlockerIteratorDoesNotLoadAll(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, stillPending, 50, "50 leases should still be pending")
 	})
-}
-
-// newExpiryFixture sets up a fixture with a provider, an SKU, and a funded tenant
-// (TestAccs[0]) credit account, plus the given pending timeout, for EndBlocker
-// pending-lease expiration tests. It returns the fixture along with the provider
-// UUID, SKU UUID, denom, and the fixture's base block time.
-func newExpiryFixture(t *testing.T, pendingTimeoutSecs uint64) (*testFixture, string, string, string, time.Time) {
-	t.Helper()
-	f := initFixture(t)
-	k := f.App.BillingKeeper
-
-	params := types.DefaultParams()
-	params.PendingTimeout = pendingTimeoutSecs
-	params.MaxPendingLeasesPerTenant = 500
-	require.NoError(t, k.SetParams(f.Ctx, params))
-
-	provider := f.createTestProvider(t, f.TestAccs[1].String(), f.TestAccs[2].String())
-	sku := f.createTestSKU(t, provider.Uuid, 3600)
-
-	tenant := f.TestAccs[0]
-	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
-	require.NoError(t, err)
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000_000_000))))
-	require.NoError(t, k.SetCreditAccount(f.Ctx, types.CreditAccount{
-		Tenant:        tenant.String(),
-		CreditAddress: creditAddr.String(),
-	}))
-
-	return f, provider.Uuid, sku.Uuid, testDenom, f.Ctx.BlockTime()
-}
-
-// setPendingLease writes a PENDING lease with an explicit UUID and created_at
-// directly to state (bypassing message validation) so expiration tests can
-// control the (state, created_at) index key precisely.
-func (f *testFixture) setPendingLease(t *testing.T, uuid, providerUUID, skuUUID, denom string, createdAt time.Time) {
-	t.Helper()
-	params, err := f.App.BillingKeeper.GetParams(f.Ctx)
-	require.NoError(t, err)
-
-	lease := types.Lease{
-		Uuid:                       uuid,
-		Tenant:                     f.TestAccs[0].String(),
-		ProviderUuid:               providerUUID,
-		Items:                      []types.LeaseItem{{SkuUuid: skuUUID, Quantity: 1, LockedPrice: sdk.NewCoin(denom, sdkmath.NewInt(1))}},
-		State:                      types.LEASE_STATE_PENDING,
-		CreatedAt:                  createdAt,
-		LastSettledAt:              createdAt,
-		MinLeaseDurationAtCreation: params.MinLeaseDuration,
-	}
-	require.NoError(t, f.App.BillingKeeper.SetLease(f.Ctx, lease))
-
-	// Mirror CreateLease's credit-account side effects so EndBlocker expiry finds a
-	// consistent account: bump the pending count and reserve credit using the same
-	// amount ExpirePendingLease will release. Without this, expiry logs
-	// "data inconsistency" warnings (pending count already zero / reservation underflow).
-	ca, err := f.App.BillingKeeper.GetCreditAccount(f.Ctx, lease.Tenant)
-	require.NoError(t, err)
-	ca.PendingLeaseCount++
-	ca.ReservedAmounts = types.AddReservation(ca.ReservedAmounts, types.GetLeaseReservationAmount(&lease, params.MinLeaseDuration))
-	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, ca))
 }
 
 // TestEndBlocker_ExpiresByCreatedAtNotUUIDOrder verifies that the range-bounded
@@ -4447,16 +4767,38 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	t.Run("success: provider-wide withdrawal from multiple leases", func(t *testing.T) {
-		// Create and acknowledge 3 leases
-		lease1 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: 1},
-		})
-		lease2 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: 1},
-		})
-		lease3 := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: 1},
+	// A second tenant, so the provider has two streams: tenant at 3 umfx/sec
+	// (three leases) and tenantB at 2 umfx/sec (one lease).
+	tenantB := f.TestAccs[3]
+	creditAddrB, err := types.DeriveCreditAddressFromBech32(tenantB.String())
+	require.NoError(t, err)
+	f.fundAccount(t, creditAddrB, sdk.NewCoins(fundAmount))
+	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
+		Tenant:        tenantB.String(),
+		CreditAddress: creditAddrB.String(),
+	}))
+
+	streamKey := keeper.NewStreamKey(provider.Uuid, tenant, denom)
+	streamKeyB := keeper.NewStreamKey(provider.Uuid, tenantB, denom)
+
+	// requireSettledAt checks that a stream was last settled at the given time.
+	requireSettledAt := func(t *testing.T, key keeper.StreamKey, settledAt time.Time) {
+		t.Helper()
+		stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, key)
+		require.NoError(t, err)
+		require.Equal(t, settledAt, stream.LastSettledAt)
+	}
+
+	t.Run("success: provider-wide withdrawal across tenants", func(t *testing.T) {
+		// Create and acknowledge 3 leases for the first tenant
+		for range 3 {
+			f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
+				{SkuUuid: sku.Uuid, Quantity: 1},
+			})
+		}
+		// And one lease of quantity 2 for the second tenant
+		f.createAndAcknowledgeLease(t, msgServer, tenantB, providerAddr, []types.LeaseItemInput{
+			{SkuUuid: sku.Uuid, Quantity: 2},
 		})
 
 		// Advance block time by 100 seconds
@@ -4466,7 +4808,7 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		// Get initial balance
 		initialBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
 
-		// Withdraw using provider-wide mode (no lease UUIDs, just provider UUID)
+		// Withdraw for the whole provider
 		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
 			Sender:       providerAddr.String(),
 			ProviderUuid: provider.Uuid,
@@ -4474,52 +4816,85 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, payoutAddr.String(), resp.PayoutAddress)
-		require.Equal(t, uint64(3), resp.WithdrawalCount)
-		require.False(t, resp.TotalAmounts.IsZero())
-		require.False(t, resp.HasMore) // Only 3 leases, default limit is 50
+		require.Equal(t, uint64(2), resp.WithdrawalCount, "two streams paid out for four leases")
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(500))), resp.TotalAmounts)
+		require.False(t, resp.HasMore) // Only 2 streams, default limit is 50
+		require.Empty(t, resp.NextKey)
 
-		// Verify total balance increased
+		// Verify the payout came from each tenant's credit according to its rate
 		newBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
-		require.True(t, newBalance.Amount.GT(initialBalance.Amount))
+		require.Equal(t, sdkmath.NewInt(500), newBalance.Amount.Sub(initialBalance.Amount))
+		require.Equal(t, fundAmount.Amount.SubRaw(300), f.App.BankKeeper.GetBalance(f.Ctx, creditAddr, denom).Amount)
+		require.Equal(t, fundAmount.Amount.SubRaw(200), f.App.BankKeeper.GetBalance(f.Ctx, creditAddrB, denom).Amount)
 
-		// Verify each lease was settled (last_settled_at updated)
-		for _, leaseUUID := range []string{lease1, lease2, lease3} {
-			lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
-			require.NoError(t, err)
-			require.Equal(t, f.Ctx.BlockTime(), lease.LastSettledAt)
-		}
+		// Verify each stream was settled (last_settled_at updated)
+		requireSettledAt(t, streamKey, f.Ctx.BlockTime())
+		requireSettledAt(t, streamKeyB, f.Ctx.BlockTime())
+		requireInvariants(t, f)
 	})
 
-	t.Run("success: pagination with limit parameter", func(t *testing.T) {
-		// Create 5 more leases
-		for i := 0; i < 5; i++ {
+	t.Run("success: limit counts streams, not leases", func(t *testing.T) {
+		// Create 5 more leases for the first tenant: its stream now aggregates 8 leases
+		for range 5 {
 			f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
 				{SkuUuid: sku.Uuid, Quantity: 1},
 			})
 		}
 
 		// Advance time so there's something to withdraw
+		settledBefore := f.Ctx.BlockTime()
 		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 		f.Ctx = newCtx
 
-		// Withdraw with limit=2
-		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+		// 100 seconds at 8 umfx/sec and at 2 umfx/sec
+		owed := map[string]sdkmath.Int{
+			tenant.String():  sdkmath.NewInt(800),
+			tenantB.String(): sdkmath.NewInt(200),
+		}
+		cursorCodec := collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey)
+
+		// Withdraw with limit=1: one stream is paid, whatever its lease count
+		first, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
 			Sender:       providerAddr.String(),
 			ProviderUuid: provider.Uuid,
-			Limit:        2,
+			Limit:        1,
 		})
 		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Equal(t, uint64(2), resp.WithdrawalCount)
-		require.True(t, resp.HasMore) // More leases remain
-	})
+		require.NotNil(t, first)
+		require.Equal(t, uint64(1), first.WithdrawalCount)
+		require.True(t, first.HasMore) // The other stream remains
+		require.NotEmpty(t, first.NextKey)
 
-	t.Run("success: has_more is false when all leases processed", func(t *testing.T) {
-		// Advance time
-		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
-		f.Ctx = newCtx
+		// next_key names the stream that was just paid
+		_, cursor, err := cursorCodec.Decode(first.NextKey)
+		require.NoError(t, err)
+		require.Equal(t, denom, cursor.K2())
+		firstTenant := cursor.K1()
+		require.Contains(t, owed, firstTenant.String())
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, owed[firstTenant.String()])), first.TotalAmounts)
 
-		// Withdraw with high limit (more than total leases)
+		secondTenant := tenant
+		if firstTenant.Equals(tenant) {
+			secondTenant = tenantB
+		}
+		requireSettledAt(t, keeper.NewStreamKey(provider.Uuid, firstTenant, denom), f.Ctx.BlockTime())
+		requireSettledAt(t, keeper.NewStreamKey(provider.Uuid, secondTenant, denom), settledBefore)
+
+		// Resuming from next_key pays the other stream; has_more is false when all streams are processed
+		second, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
+			Limit:        1,
+			Key:          first.NextKey,
+		})
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), second.WithdrawalCount)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, owed[secondTenant.String()])), second.TotalAmounts)
+		require.False(t, second.HasMore)
+		require.Empty(t, second.NextKey)
+		requireSettledAt(t, keeper.NewStreamKey(provider.Uuid, secondTenant, denom), f.Ctx.BlockTime())
+
+		// Withdraw with high limit (more than total streams): nothing is left in this block
 		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
 			Sender:       providerAddr.String(),
 			ProviderUuid: provider.Uuid,
@@ -4527,7 +4902,10 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.False(t, resp.HasMore) // All leases processed
+		require.False(t, resp.HasMore) // All streams processed
+		require.True(t, resp.TotalAmounts.IsZero())
+		require.Zero(t, resp.WithdrawalCount)
+		requireInvariants(t, f)
 	})
 
 	t.Run("success: skips pending leases", func(t *testing.T) {
@@ -4552,7 +4930,7 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
 		f.Ctx = newCtx
 
-		// Provider-wide withdraw should return 0 (pending leases are skipped)
+		// Provider-wide withdraw should return 0 (a pending lease has no stream)
 		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
 			Sender:       provider2Addr.String(),
 			ProviderUuid: provider2.Uuid,
@@ -4560,67 +4938,19 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), resp.WithdrawalCount)
 		require.True(t, resp.TotalAmounts.IsZero())
-	})
-
-	t.Run("success: closed leases are already settled and skipped", func(t *testing.T) {
-		// Create a new provider for isolation
-		provider3Addr := f.TestAccs[4]
-		provider3 := f.createTestProvider(t, provider3Addr.String(), provider3Addr.String())
-		sku3 := f.createTestSKU(t, provider3.Uuid, 3600)
-
-		// Create and acknowledge a lease
-		leaseUUID := f.createAndAcknowledgeLease(t, msgServer, tenant, provider3Addr, []types.LeaseItemInput{
-			{SkuUuid: sku3.Uuid, Quantity: 1},
-		})
-
-		// Advance time
-		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
-		f.Ctx = newCtx
-
-		// Close the lease (this settles it)
-		_, err := msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
-			Sender:     tenant.String(),
-			LeaseUuids: []string{leaseUUID},
-		})
-		require.NoError(t, err)
-
-		// Provider-wide withdraw skips CLOSED leases (already settled at close).
-		// (nothing more to withdraw since close already settled)
-		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:       provider3Addr.String(),
-			ProviderUuid: provider3.Uuid,
-		})
-		require.NoError(t, err)
-		// Should succeed but nothing to withdraw (already settled during close)
-		require.Equal(t, uint64(0), resp.WithdrawalCount)
-	})
-
-	t.Run("fail: invalid provider UUID", func(t *testing.T) {
-		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:       providerAddr.String(),
-			ProviderUuid: "00000000-0000-7000-8000-000000000000",
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "not found")
-	})
-
-	t.Run("fail: unauthorized sender", func(t *testing.T) {
-		// Use tenant as an unauthorized sender for provider-wide withdrawal
-		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:       tenant.String(), // tenant is not provider
-			ProviderUuid: provider.Uuid,
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "not authorized")
+		require.False(t, resp.HasMore)
+		require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, provider2Addr, denom).IsZero())
 	})
 
 	t.Run("success: authority can withdraw on behalf of provider", func(t *testing.T) {
-		// Create a new provider for isolation (reuse payoutAddr as provider address)
-		provider4 := f.createTestProvider(t, payoutAddr.String(), payoutAddr.String())
+		// Create a new provider for isolation, paid out to a fresh address
+		provider4Addr := sdk.AccAddress("provider4_address___")
+		payout4Addr := sdk.AccAddress("provider4_payout____")
+		provider4 := f.createTestProvider(t, provider4Addr.String(), payout4Addr.String())
 		sku4 := f.createTestSKU(t, provider4.Uuid, 3600)
 
 		// Create and acknowledge a lease
-		f.createAndAcknowledgeLease(t, msgServer, tenant, payoutAddr, []types.LeaseItemInput{
+		f.createAndAcknowledgeLease(t, msgServer, tenant, provider4Addr, []types.LeaseItemInput{
 			{SkuUuid: sku4.Uuid, Quantity: 1},
 		})
 
@@ -4629,41 +4959,28 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		f.Ctx = newCtx
 
 		// Authority withdraws on behalf of provider
+		authority := f.App.BillingKeeper.GetAuthority()
+		authorityAddr, err := sdk.AccAddressFromBech32(authority)
+		require.NoError(t, err)
 		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:       f.App.BillingKeeper.GetAuthority(),
+			Sender:       authority,
 			ProviderUuid: provider4.Uuid,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
 		require.Equal(t, uint64(1), resp.WithdrawalCount)
-		require.Equal(t, payoutAddr.String(), resp.PayoutAddress)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(100))), resp.TotalAmounts)
+		require.Equal(t, payout4Addr.String(), resp.PayoutAddress)
+
+		// The funds go to the provider's payout address, never to the sender
+		require.Equal(t, sdkmath.NewInt(100), f.App.BankKeeper.GetBalance(f.Ctx, payout4Addr, denom).Amount)
+		require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, authorityAddr, denom).IsZero())
+		require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, provider4Addr, denom).IsZero())
 	})
 
-	t.Run("fail: cannot specify both lease_uuids and provider_uuid", func(t *testing.T) {
-		leaseUUID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: 1},
-		})
-
-		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:       providerAddr.String(),
-			LeaseUuids:   []string{leaseUUID},
-			ProviderUuid: provider.Uuid,
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "cannot specify both")
-	})
-
-	t.Run("fail: must specify either lease_uuids or provider_uuid", func(t *testing.T) {
-		_, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender: providerAddr.String(),
-		})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "must specify either")
-	})
-
-	t.Run("success: auto-closes leases on credit exhaustion", func(t *testing.T) {
+	t.Run("success: credit exhaustion freezes the stream and the EndBlocker closes its leases", func(t *testing.T) {
 		// Create a new tenant with limited credit for this test
-		limitedTenant := f.TestAccs[3]
+		limitedTenant := f.TestAccs[4]
 		limitedCreditAddr, err := types.DeriveCreditAddressFromBech32(limitedTenant.String())
 		require.NoError(t, err)
 
@@ -4692,157 +5009,190 @@ func TestMsgWithdraw_ProviderWideMode(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), creditAcct.ActiveLeaseCount)
 
+		// Settle the provider's other streams first, so this withdrawal's amounts are exact
+		_, err = msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
+			Sender:       providerAddr.String(),
+			ProviderUuid: provider.Uuid,
+		})
+		require.NoError(t, err)
+
 		// Advance time beyond credit capacity (10000 seconds > 5000 available)
 		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(10000 * time.Second))
 		f.Ctx = newCtx
+		f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
 
-		// Provider-wide withdrawal should trigger auto-close
+		// Provider-wide withdrawal pays what is left of the limited tenant's credit
+		// (5000, capped) and the full accrual of the two funded tenants
+		// (8 umfx/sec and 2 umfx/sec for 10000 seconds).
 		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
 			Sender:       providerAddr.String(),
 			ProviderUuid: provider.Uuid,
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(5000+80000+20000))), resp.TotalAmounts)
+		require.Equal(t, uint64(3), resp.WithdrawalCount)
+		require.True(t, f.App.BankKeeper.GetBalance(f.Ctx, limitedCreditAddr, denom).IsZero())
 
-		// Verify the lease was auto-closed
+		// Only the limited tenant's stream is frozen
+		limitedKey := keeper.NewStreamKey(provider.Uuid, limitedTenant, denom)
+		limitedStream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, limitedKey)
+		require.NoError(t, err)
+		require.True(t, limitedStream.IsExhausted())
+		for _, key := range []keeper.StreamKey{streamKey, streamKeyB} {
+			stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, key)
+			require.NoError(t, err)
+			require.False(t, stream.IsExhausted())
+		}
+		require.Equal(t, 1, countEvents(f.Ctx, types.EventTypeStreamExhausted))
+		batch := findEvent(t, f.Ctx, types.EventTypeBatchWithdraw)
+		require.Equal(t, "3", attrValue(t, batch, types.AttributeKeyStreamCount))
+		require.Equal(t, "1", attrValue(t, batch, types.AttributeKeyExhaustedCount))
+
+		// The withdrawal itself closes nothing
+		lease, err = f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State, "no lease is closed inside the withdraw tx")
+		require.Zero(t, countEvents(f.Ctx, types.EventTypeLeaseAutoClose))
+		requireInvariants(t, f)
+
+		// The EndBlocker closes the lease of the frozen stream, and only that one
+		f.Ctx = f.Ctx.WithEventManager(sdk.NewEventManager())
+		require.NoError(t, f.App.BillingKeeper.EndBlocker(f.Ctx))
+		require.Equal(t, 1, countEvents(f.Ctx, types.EventTypeLeaseAutoClose))
+		autoClosed := findEvent(t, f.Ctx, types.EventTypeLeaseAutoClose)
+		require.Equal(t, leaseUUID, attrValue(t, autoClosed, types.AttributeKeyLeaseUUID))
+		require.Equal(t, limitedTenant.String(), attrValue(t, autoClosed, types.AttributeKeyTenant))
+		require.Equal(t, provider.Uuid, attrValue(t, autoClosed, types.AttributeKeyProviderUUID))
+		require.Equal(t, "credit_exhausted", attrValue(t, autoClosed, types.AttributeKeyReason))
+
 		lease, err = f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
 		require.NoError(t, err)
 		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State, "lease should be auto-closed due to credit exhaustion")
 		require.NotNil(t, lease.ClosedAt, "closed_at should be set")
+		require.Equal(t, f.Ctx.BlockTime(), *lease.ClosedAt)
 		require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason, "closure reason should indicate credit exhaustion")
 
-		// Verify credit account's active lease count was decremented
+		_, err = f.App.BillingKeeper.Streams.Get(f.Ctx, limitedKey)
+		require.ErrorIs(t, err, collections.ErrNotFound)
+
+		// Verify credit account's active lease count was decremented and its reservation released
 		creditAcct, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, limitedTenant.String())
 		require.NoError(t, err)
 		require.Equal(t, uint64(0), creditAcct.ActiveLeaseCount, "active lease count should be decremented")
+		require.True(t, creditAcct.ReservedAmounts.IsZero())
 
-		// Verify provider received the available credit (5000 units)
-		// The transfer amount should be capped at available credit
-		require.False(t, resp.TotalAmounts.IsZero(), "provider should receive the available credit")
+		// The funded tenants' leases are untouched
+		for _, key := range []keeper.StreamKey{streamKey, streamKeyB} {
+			stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, key)
+			require.NoError(t, err)
+			require.False(t, stream.IsExhausted())
+		}
+		creditAcct, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
+		require.NoError(t, err)
+		require.Equal(t, uint64(9), creditAcct.ActiveLeaseCount, "8 leases with this provider and 1 with provider4")
+		requireInvariants(t, f)
 	})
 }
 
-// TestMsgWithdraw_ProviderWideLargePagination tests provider-wide withdrawal with more leases
+// TestMsgWithdraw_ProviderWideLargePagination tests provider-wide withdrawal with more streams
 // than the default limit, verifying has_more flag and limit behavior.
-// Note: Provider-wide withdrawal does NOT have stateful pagination (no cursor).
-// Each call iterates from the beginning and processes up to `limit` leases.
+// Pagination is per stream, so the test needs one tenant per stream.
+// A call without a key iterates from the beginning and processes up to `limit` streams;
+// a call with the previous page's next_key resumes after it.
 func TestMsgWithdraw_ProviderWideLargePagination(t *testing.T) {
-	f := initFixture(t)
+	s := newStreamFixture(t, testDenom)
 
-	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	// Create 75 streams (more than default limit of 50): one tenant each, 1 umfx/sec
+	const totalStreams = 75
+	tenants := apptesting.CreateRandomAccounts(totalStreams)
+	for _, tenant := range tenants {
+		s.fundTenant(t, tenant, testDenom, 1_000_000)
+		s.lease(t, tenant)
+	}
 
-	tenant := f.TestAccs[0]
-	providerAddr := f.TestAccs[1]
-	payoutAddr := f.TestAccs[2]
-	denom := testDenom
-
-	// Create provider and SKU
-	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
-	sku := f.createTestSKU(t, provider.Uuid, 3600) // 1 per second
-
-	// Fund tenant's credit account generously for many leases
-	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
-	require.NoError(t, err)
-	fundAmount := sdk.NewCoin(denom, sdkmath.NewInt(1000000000)) // 1 billion
-	f.fundAccount(t, creditAddr, sdk.NewCoins(fundAmount))
-
-	err = f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
-		Tenant:        tenant.String(),
-		CreditAddress: creditAddr.String(),
-	})
-	require.NoError(t, err)
-
-	// Increase max leases per tenant for this test
-	params := types.DefaultParams()
-	params.MaxLeasesPerTenant = 200
-	params.MaxPendingLeasesPerTenant = 200
-	err = f.App.BillingKeeper.SetParams(f.Ctx, params)
-	require.NoError(t, err)
-
-	// Create 75 leases (more than default limit of 50)
-	const totalLeases = 75
-	leaseUUIDs := make([]string, 0, totalLeases)
-	for i := 0; i < totalLeases; i++ {
-		leaseUUID := f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr, []types.LeaseItemInput{
-			{SkuUuid: sku.Uuid, Quantity: 1},
-		})
-		leaseUUIDs = append(leaseUUIDs, leaseUUID)
+	// requireSettled checks how many of the 75 streams are settled up to the current block time.
+	requireSettled := func(t *testing.T, want int) {
+		t.Helper()
+		settled := 0
+		for _, tenant := range tenants {
+			state, exists := s.stream(t, tenant, testDenom)
+			require.True(t, exists)
+			if state.LastSettledAt.Equal(s.Ctx.BlockTime()) {
+				settled++
+			}
+		}
+		require.Equal(t, want, settled)
 	}
 
 	// Advance time so there's something to withdraw
-	newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
-	f.Ctx = newCtx
+	s.advance(100 * time.Second)
 
-	// Get initial payout balance
-	initialBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
-
-	t.Run("default limit processes 50 leases with has_more=true", func(t *testing.T) {
-		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:       providerAddr.String(),
-			ProviderUuid: provider.Uuid,
-			// Limit: 0 means use default (50)
-		})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Equal(t, uint64(50), resp.WithdrawalCount, "should process default limit of 50")
-		require.True(t, resp.HasMore, "should indicate more leases exist beyond limit")
-		require.False(t, resp.TotalAmounts.IsZero())
+	t.Run("default limit processes 50 streams with has_more=true, next_key reaches the rest", func(t *testing.T) {
+		// Limit: 0 means use default (50)
+		first := s.withdraw(t, 0, nil)
+		require.Equal(t, types.DefaultProviderWithdrawLimit, first.WithdrawalCount, "should process default limit of 50")
+		require.True(t, first.HasMore, "should indicate more streams exist beyond limit")
+		require.NotEmpty(t, first.NextKey)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(5000))), first.TotalAmounts)
 
 		// Verify funds were transferred
-		newBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
-		require.True(t, newBalance.Amount.GT(initialBalance.Amount), "balance should increase")
+		require.Equal(t, sdkmath.NewInt(5000), s.payout(testDenom))
+		requireSettled(t, 50)
+
+		// The second page covers the remaining 25 streams
+		second := s.withdraw(t, 0, first.NextKey)
+		require.Equal(t, uint64(25), second.WithdrawalCount)
+		require.False(t, second.HasMore)
+		require.Empty(t, second.NextKey)
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(2500))), second.TotalAmounts)
+		require.Equal(t, sdkmath.NewInt(7500), s.payout(testDenom))
+		requireSettled(t, totalStreams)
 	})
 
-	t.Run("explicit limit=100 processes all 75 leases", func(t *testing.T) {
+	t.Run("explicit limit=100 processes all 75 streams", func(t *testing.T) {
 		// Advance time so there's more to withdraw
-		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
-		f.Ctx = newCtx
+		s.advance(100 * time.Second)
 
-		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:       providerAddr.String(),
-			ProviderUuid: provider.Uuid,
-			Limit:        100, // Explicit max limit
-		})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Equal(t, uint64(75), resp.WithdrawalCount, "should process all 75 leases")
-		require.False(t, resp.HasMore, "no more leases when all processed")
+		// Explicit max limit
+		resp := s.withdraw(t, types.MaxBatchLeaseSize, nil)
+		require.Equal(t, uint64(totalStreams), resp.WithdrawalCount, "should process all 75 streams")
+		require.False(t, resp.HasMore, "no more streams when all processed")
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(7500))), resp.TotalAmounts)
+		require.Equal(t, sdkmath.NewInt(15000), s.payout(testDenom))
+		requireSettled(t, totalStreams)
 	})
 
 	t.Run("small limit processes only requested amount", func(t *testing.T) {
 		// Advance time
-		newCtx := f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
-		f.Ctx = newCtx
+		s.advance(100 * time.Second)
 
-		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:       providerAddr.String(),
-			ProviderUuid: provider.Uuid,
-			Limit:        10, // Small limit
-		})
-		require.NoError(t, err)
-		require.NotNil(t, resp)
-		require.Equal(t, uint64(10), resp.WithdrawalCount, "should process exactly 10 leases")
-		require.True(t, resp.HasMore, "should indicate more leases exist")
-	})
+		// Small limit
+		resp := s.withdraw(t, 10, nil)
+		require.Equal(t, uint64(10), resp.WithdrawalCount, "should process exactly 10 streams")
+		require.True(t, resp.HasMore, "should indicate more streams exist")
+		require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1000))), resp.TotalAmounts)
+		requireSettled(t, 10)
 
-	t.Run("all leases get settled over multiple calls", func(t *testing.T) {
-		// Verify all 75 leases have been settled at least once
-		settledCount := 0
-		for _, leaseUUID := range leaseUUIDs {
-			lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
-			require.NoError(t, err)
-			if lease.LastSettledAt.After(lease.CreatedAt) {
-				settledCount++
-			}
-		}
-		require.Equal(t, totalLeases, settledCount, "all leases should have been settled")
+		// Without a key the same page is visited again: its streams are settled
+		// already, so nothing is paid twice.
+		again := s.withdraw(t, 10, nil)
+		require.Zero(t, again.WithdrawalCount)
+		require.True(t, again.TotalAmounts.IsZero())
+		require.True(t, again.HasMore)
+		require.Equal(t, resp.NextKey, again.NextKey)
+		requireSettled(t, 10)
 	})
 
 	t.Run("funds accumulate correctly across withdrawals", func(t *testing.T) {
-		finalBalance := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, denom)
-		require.True(t, finalBalance.Amount.GT(initialBalance.Amount),
-			"final balance (%s) should be greater than initial (%s)",
-			finalBalance.Amount, initialBalance.Amount)
+		// 75 streams × 200 seconds, plus 10 streams × 100 seconds
+		require.Equal(t, sdkmath.NewInt(16000), s.payout(testDenom))
+		for _, tenant := range tenants {
+			paid := sdkmath.NewInt(1_000_000).Sub(s.credit(tenant, testDenom))
+			require.True(t, paid.Equal(sdkmath.NewInt(200)) || paid.Equal(sdkmath.NewInt(300)),
+				"tenant %s paid %s", tenant, paid)
+		}
+		s.requireInvariants(t)
 	})
 }
 
@@ -4908,7 +5258,7 @@ func TestMsgWithdraw_ProviderWideMultiDenom(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.Equal(t, uint64(3), resp.WithdrawalCount, "should withdraw from all 3 leases")
+		require.Equal(t, uint64(2), resp.WithdrawalCount, "the 3 leases aggregate into one stream per denom")
 
 		// Verify both denoms were received
 		newBalance1 := f.App.BankKeeper.GetBalance(f.Ctx, payoutAddr, testDenom)
@@ -4926,12 +5276,23 @@ func TestMsgWithdraw_ProviderWideMultiDenom(t *testing.T) {
 		require.Equal(t, sdkmath.NewInt(200), resp.TotalAmounts.AmountOf(testDenom))
 		require.Equal(t, sdkmath.NewInt(400), resp.TotalAmounts.AmountOf(testDenom2))
 
-		// Verify all leases were settled
+		// Verify both streams were settled: each aggregates the two leases priced in its denom
+		for streamDenom, rate := range map[string]int64{testDenom: 2, testDenom2: 4} {
+			stream, err := f.App.BillingKeeper.Streams.Get(f.Ctx, keeper.NewStreamKey(provider.Uuid, tenant, streamDenom))
+			require.NoError(t, err)
+			require.Equal(t, sdkmath.NewInt(rate), stream.Rate, streamDenom)
+			require.Equal(t, uint64(2), stream.LeaseCount, streamDenom)
+			require.Equal(t, f.Ctx.BlockTime(), stream.LastSettledAt, streamDenom)
+		}
+
+		// The leases themselves are untouched by the withdrawal
 		for _, leaseUUID := range []string{lease1, lease2, lease3} {
 			lease, err := f.App.BillingKeeper.GetLease(f.Ctx, leaseUUID)
 			require.NoError(t, err)
-			require.Equal(t, f.Ctx.BlockTime(), lease.LastSettledAt)
+			require.Equal(t, types.LEASE_STATE_ACTIVE, lease.State)
+			require.Nil(t, lease.LastSettledAt) //nolint:staticcheck // asserting the deprecated field stays unset
 		}
+		requireInvariants(t, f)
 	})
 
 	t.Run("empty result when no withdrawable amounts", func(t *testing.T) {
@@ -5090,6 +5451,7 @@ func TestReservationReleaseOnClose(t *testing.T) {
 	creditAccount, err = f.App.BillingKeeper.GetCreditAccount(f.Ctx, tenant.String())
 	require.NoError(t, err)
 	require.Equal(t, sdkmath.NewInt(3600), creditAccount.ReservedAmounts.AmountOf(denom))
+	requireInvariants(t, f)
 
 	// Now third lease should succeed (after closing first)
 	createResp3, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
@@ -5106,6 +5468,7 @@ func TestReservationReleaseOnClose(t *testing.T) {
 		LeaseUuids: []string{leaseUUID2},
 	})
 	require.NoError(t, err)
+	requireInvariants(t, f)
 }
 
 // TestReservationReleaseOnReject tests that rejecting a pending lease releases its reservation.
@@ -5742,250 +6105,187 @@ func TestBatchMultiTenantDeterminism(t *testing.T) {
 	})
 }
 
-// TestMsgWithdraw_ProviderWideCursorDrainsAllLeases verifies that looping
+// TestMsgWithdraw_ProviderWideCursorDrainsAllStreams verifies that looping
 // provider-wide withdrawal with key <- next_key at a small limit settles every
-// active lease and terminates (the pre-cursor code re-scans the front forever).
-func TestMsgWithdraw_ProviderWideCursorDrainsAllLeases(t *testing.T) {
-	f := initFixture(t)
-	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+// stream exactly once and terminates (the pre-cursor code re-scans the front
+// forever). The cursor is per stream, so each stream belongs to its own tenant;
+// every tenant holds two leases, so pages are counted in streams, not leases.
+func TestMsgWithdraw_ProviderWideCursorDrainsAllStreams(t *testing.T) {
+	s := newStreamFixture(t, testDenom)
 
-	tenant := f.TestAccs[0]
-	providerAddr := f.TestAccs[1]
-	payoutAddr := f.TestAccs[2]
-	denom := testDenom
-
-	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
-	sku := f.createTestSKU(t, provider.Uuid, 3600) // 1 per second
-
-	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
-	require.NoError(t, err)
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1000000000))))
-	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
-		Tenant:        tenant.String(),
-		CreditAddress: creditAddr.String(),
-	}))
-
-	params := types.DefaultParams()
-	params.MaxLeasesPerTenant = 200
-	params.MaxPendingLeasesPerTenant = 200
-	require.NoError(t, f.App.BillingKeeper.SetParams(f.Ctx, params))
-
-	const totalLeases = 25
-	leaseUUIDs := make([]string, 0, totalLeases)
-	for i := 0; i < totalLeases; i++ {
-		leaseUUIDs = append(leaseUUIDs, f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
-			[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}}))
+	const totalStreams = 25
+	tenants := apptesting.CreateRandomAccounts(totalStreams)
+	for _, tenant := range tenants {
+		s.fundTenant(t, tenant, testDenom, 1_000_000)
+		s.lease(t, tenant)
+		s.lease(t, tenant)
 	}
 
-	// Advance time so every lease has something to settle.
-	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
+	// Advance time so every stream has something to settle.
+	s.advance(100 * time.Second)
+
+	// Streams are visited in key order: (tenant address, denom) within the provider.
+	sorted := slices.Clone(tenants)
+	slices.SortFunc(sorted, func(a, b sdk.AccAddress) int { return bytes.Compare(a, b) })
+	cursorCodec := collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey)
 
 	var key []byte
 	pages := 0
 	totalSettled := uint64(0)
+	totalPaid := sdk.NewCoins()
 	for {
-		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:       providerAddr.String(),
-			ProviderUuid: provider.Uuid,
-			Limit:        7,
-			Key:          key,
-		})
-		require.NoError(t, err)
+		resp := s.withdraw(t, 7, key)
 		pages++
 		totalSettled += resp.WithdrawalCount
+		totalPaid = totalPaid.Add(resp.TotalAmounts...)
 		require.LessOrEqual(t, resp.WithdrawalCount, uint64(7))
+		require.Equal(t,
+			sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewIntFromUint64(resp.WithdrawalCount*200))),
+			resp.TotalAmounts,
+			"each stream pays 2 umfx/sec for 100 seconds")
 		require.Less(t, pages, 100, "pagination must terminate")
 		if !resp.HasMore {
 			require.Empty(t, resp.NextKey, "next_key must be empty on the final page")
 			break
 		}
 		require.NotEmpty(t, resp.NextKey, "next_key must be set while has_more is true")
+
+		// next_key names the last stream of the page.
+		_, cursor, err := cursorCodec.Decode(resp.NextKey)
+		require.NoError(t, err)
+		require.Equal(t, sorted[pages*7-1], cursor.K1())
+		require.Equal(t, testDenom, cursor.K2())
 		key = resp.NextKey
 	}
 
-	// ceil(25 / 7) == 4 pages, every lease settled exactly once (no double-drain), and
-	// every lease settled to the current block time.
-	require.Equal(t, 4, pages, "should take 4 pages to drain 25 leases at limit 7")
-	require.Equal(t, uint64(totalLeases), totalSettled, "each lease settled exactly once across all pages")
-	for _, uuid := range leaseUUIDs {
-		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, uuid)
-		require.NoError(t, err)
-		require.Equal(t, f.Ctx.BlockTime(), lease.LastSettledAt,
-			"lease %s should be settled to current block time", uuid)
+	// ceil(25 / 7) == 4 pages, every stream settled exactly once (no double-drain), and
+	// every stream settled to the current block time.
+	require.Equal(t, 4, pages, "should take 4 pages to drain 25 streams at limit 7")
+	require.Equal(t, uint64(totalStreams), totalSettled, "each stream settled exactly once across all pages")
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(totalStreams*200))), totalPaid)
+	require.Equal(t, sdkmath.NewInt(totalStreams*200), s.payout(testDenom))
+	for _, tenant := range tenants {
+		state, exists := s.stream(t, tenant, testDenom)
+		require.True(t, exists)
+		require.Equal(t, s.Ctx.BlockTime(), state.LastSettledAt,
+			"stream of %s should be settled to current block time", tenant)
+		require.Equal(t, sdkmath.NewInt(1_000_000-200), s.credit(tenant, testDenom),
+			"tenant %s must be charged exactly once", tenant)
 	}
-}
-
-// TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease closes the exact
-// lease named by next_key between pages. StartExclusive must still resume at the
-// next-greater UUID rather than silently stopping.
-func TestMsgWithdraw_ProviderWideCursorSurvivesClosedBoundaryLease(t *testing.T) {
-	f := initFixture(t)
-	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
-
-	tenant := f.TestAccs[0]
-	providerAddr := f.TestAccs[1]
-	payoutAddr := f.TestAccs[2]
-	denom := testDenom
-
-	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
-	sku := f.createTestSKU(t, provider.Uuid, 3600)
-
-	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
-	require.NoError(t, err)
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1000000000))))
-	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
-		Tenant:        tenant.String(),
-		CreditAddress: creditAddr.String(),
-	}))
-
-	const totalLeases = 6
-	for i := 0; i < totalLeases; i++ {
-		f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
-			[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}})
-	}
-	f.Ctx = f.Ctx.WithBlockTime(f.Ctx.BlockTime().Add(100 * time.Second))
-
-	// Page 1 at limit 3 processes the 3 smallest UUIDs; next_key is the 3rd.
-	resp1, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender:       providerAddr.String(),
-		ProviderUuid: provider.Uuid,
-		Limit:        3,
-	})
-	require.NoError(t, err)
-	require.Equal(t, uint64(3), resp1.WithdrawalCount)
-	require.True(t, resp1.HasMore)
-	require.NotEmpty(t, resp1.NextKey)
-
-	// Close the boundary lease, removing it from the ACTIVE index.
-	boundaryUUID := string(resp1.NextKey)
-	_, err = msgServer.CloseLease(f.Ctx, &types.MsgCloseLease{
-		Sender:     tenant.String(),
-		LeaseUuids: []string{boundaryUUID},
-	})
-	require.NoError(t, err)
-
-	// Resume from the now-closed cursor: the remaining 3 tail leases must be reached.
-	seen := uint64(0)
-	key := resp1.NextKey
-	pages := 0
-	for {
-		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender:       providerAddr.String(),
-			ProviderUuid: provider.Uuid,
-			Limit:        3,
-			Key:          key,
-		})
-		require.NoError(t, err)
-		seen += resp.WithdrawalCount
-		pages++
-		require.Less(t, pages, 100, "pagination must terminate")
-		if !resp.HasMore {
-			break
-		}
-		key = resp.NextKey
-	}
-	require.Equal(t, uint64(3), seen, "tail leases must be reached after the boundary lease was closed")
+	s.requireInvariants(t)
 }
 
 // TestMsgWithdraw_ProviderWideCursorMidCycleAckDeferredOneCycle verifies the
-// documented liveness property: a lease acknowledged (PENDING->ACTIVE) with a
-// UUID *behind* an in-flight cursor is not settled in the current cycle (the
-// cursor already passed its index slot), but is picked up on the next full
-// cycle (key=""). It is deferred by one cycle, never skipped forever or
-// double-settled.
+// documented liveness property: a stream created (first lease acknowledged,
+// PENDING->ACTIVE) with a key *behind* an in-flight cursor is not settled in
+// the current cycle (the cursor already passed its slot), but is picked up on
+// the next full cycle (key=""). It is deferred by one cycle, never skipped
+// forever or double-settled.
 func TestMsgWithdraw_ProviderWideCursorMidCycleAckDeferredOneCycle(t *testing.T) {
-	f := initFixture(t)
-	msgServer := keeper.NewMsgServerImpl(f.App.BillingKeeper)
+	s := newStreamFixture(t, testDenom)
 
-	tenant := f.TestAccs[0]
-	providerAddr := f.TestAccs[1]
-	payoutAddr := f.TestAccs[2]
-	denom := testDenom
+	// Streams are ordered by tenant address within the provider. The tenant with
+	// the smallest address is the "early" one; its lease stays PENDING for now,
+	// so it has no stream yet.
+	tenants := apptesting.CreateRandomAccounts(5)
+	slices.SortFunc(tenants, func(a, b sdk.AccAddress) int { return bytes.Compare(a, b) })
+	early, active := tenants[0], tenants[1:]
 
-	provider := f.createTestProvider(t, providerAddr.String(), payoutAddr.String())
-	sku := f.createTestSKU(t, provider.Uuid, 3600) // 1 per second
-
-	creditAddr, err := types.DeriveCreditAddressFromBech32(tenant.String())
-	require.NoError(t, err)
-	f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(denom, sdkmath.NewInt(1000000000))))
-	require.NoError(t, f.App.BillingKeeper.SetCreditAccount(f.Ctx, types.CreditAccount{
-		Tenant:        tenant.String(),
-		CreditAddress: creditAddr.String(),
-	}))
-
-	// Create the "early" lease FIRST so it gets the smallest (UUIDv7, sequence-
-	// ordered) UUID, but leave it PENDING so it is not yet in the ACTIVE index.
-	earlyCreate, err := msgServer.CreateLease(f.Ctx, &types.MsgCreateLease{
-		Tenant: tenant.String(),
-		Items:  []types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}},
+	for _, tenant := range tenants {
+		s.fundTenant(t, tenant, testDenom, 1_000_000)
+	}
+	earlyCreate, err := s.msgServer.CreateLease(s.Ctx, &types.MsgCreateLease{
+		Tenant: early.String(),
+		Items:  []types.LeaseItemInput{{SkuUuid: s.sku.Uuid, Quantity: 1}},
 	})
 	require.NoError(t, err)
-	earlyUUID := earlyCreate.LeaseUuid
 
-	// Four acknowledged (ACTIVE) leases, all with larger UUIDs than earlyUUID.
-	active := make([]string, 0, 4)
-	for i := 0; i < 4; i++ {
-		active = append(active, f.createAndAcknowledgeLease(t, msgServer, tenant, providerAddr,
-			[]types.LeaseItemInput{{SkuUuid: sku.Uuid, Quantity: 1}}))
+	// Four ACTIVE streams (1 umfx/sec each), all with larger keys than the early tenant's.
+	t0 := s.Ctx.BlockTime()
+	for _, tenant := range active {
+		s.lease(t, tenant)
 	}
 
-	// T1: advance so the ACTIVE leases have something to settle.
-	t1 := f.Ctx.BlockTime().Add(100 * time.Second)
-	f.Ctx = f.Ctx.WithBlockTime(t1)
+	requireSettledAt := func(t *testing.T, tenant sdk.AccAddress, settledAt time.Time, msg string) {
+		t.Helper()
+		state, exists := s.stream(t, tenant, testDenom)
+		require.True(t, exists)
+		require.Equal(t, settledAt, state.LastSettledAt, msg)
+	}
 
-	// Page 1 (limit 2, no cursor): settles the two smallest ACTIVE UUIDs; the
-	// cursor (next_key) lands on the 2nd-smallest ACTIVE lease.
-	resp1, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender: providerAddr.String(), ProviderUuid: provider.Uuid, Limit: 2,
-	})
-	require.NoError(t, err)
+	// T1: advance so the ACTIVE streams have something to settle.
+	s.advance(100 * time.Second)
+	t1 := s.Ctx.BlockTime()
+
+	// Page 1 (limit 2, no cursor): settles the two smallest ACTIVE streams; the
+	// cursor (next_key) lands on the 2nd-smallest ACTIVE stream.
+	resp1 := s.withdraw(t, 2, nil)
 	require.Equal(t, uint64(2), resp1.WithdrawalCount)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(200))), resp1.TotalAmounts)
 	require.True(t, resp1.HasMore)
 	require.NotEmpty(t, resp1.NextKey)
+	_, cursor, err := collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey).Decode(resp1.NextKey)
+	require.NoError(t, err)
+	require.Equal(t, active[1], cursor.K1())
 
-	// Acknowledge the early lease now: it becomes ACTIVE with LastSettledAt == t1
-	// and a UUID smaller than the cursor, i.e. behind the in-flight cursor.
-	_, err = msgServer.AcknowledgeLease(f.Ctx, &types.MsgAcknowledgeLease{
-		Sender: providerAddr.String(), LeaseUuids: []string{earlyUUID},
+	// Acknowledge the early lease now: its stream is created with
+	// LastSettledAt == t1 and a key smaller than the cursor, i.e. behind the
+	// in-flight cursor.
+	_, err = s.msgServer.AcknowledgeLease(s.Ctx, &types.MsgAcknowledgeLease{
+		Sender: s.providerAddr.String(), LeaseUuids: []string{earlyCreate.LeaseUuid},
 	})
 	require.NoError(t, err)
-	earlyLease, err := f.App.BillingKeeper.GetLease(f.Ctx, earlyUUID)
-	require.NoError(t, err)
-	require.Equal(t, types.LEASE_STATE_ACTIVE, earlyLease.State)
-	require.Equal(t, t1, earlyLease.LastSettledAt)
+	requireSettledAt(t, early, t1, "billing starts at acknowledgement")
 
-	// Finish the current cycle from the cursor. StartExclusive skips everything
-	// <= cursor, so the early lease (behind the cursor) is NOT settled this cycle.
+	// Finish the current cycle from the cursor, 50 seconds later. StartExclusive
+	// skips everything <= cursor, so neither the early stream nor the two streams
+	// of page 1 (all behind the cursor) are settled by the rest of this cycle.
+	s.advance(50 * time.Second)
+	t1b := s.Ctx.BlockTime()
 	key := resp1.NextKey
-	for {
-		resp, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-			Sender: providerAddr.String(), ProviderUuid: provider.Uuid, Limit: 2, Key: key,
-		})
-		require.NoError(t, err)
+	restCount := uint64(0)
+	restPaid := sdk.NewCoins()
+	for pages := 0; ; pages++ {
+		require.Less(t, pages, 100, "pagination must terminate")
+		resp := s.withdraw(t, 2, key)
+		restCount += resp.WithdrawalCount
+		restPaid = restPaid.Add(resp.TotalAmounts...)
 		if !resp.HasMore {
 			break
 		}
 		key = resp.NextKey
 	}
-	earlyLease, err = f.App.BillingKeeper.GetLease(f.Ctx, earlyUUID)
-	require.NoError(t, err)
-	require.Equal(t, t1, earlyLease.LastSettledAt,
-		"early lease must NOT be settled in the cycle whose cursor already passed its slot")
+	require.Equal(t, uint64(2), restCount, "only the two streams ahead of the cursor are settled")
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(300))), restPaid,
+		"two streams, 150 seconds since t0 each")
+	requireSettledAt(t, early, t1,
+		"early stream must NOT be settled in the cycle whose cursor already passed its slot")
+	requireSettledAt(t, active[0], t1, "page 1 streams are behind the cursor")
+	requireSettledAt(t, active[1], t1, "page 1 streams are behind the cursor")
+	requireSettledAt(t, active[2], t1b, "streams ahead of the cursor are settled")
+	requireSettledAt(t, active[3], t1b, "streams ahead of the cursor are settled")
+	require.Equal(t, sdkmath.NewInt(1_000_000), s.credit(early, testDenom), "the early tenant has not been charged yet")
 
 	// T2: advance again, then run a fresh cycle from the front (key="").
-	t2 := f.Ctx.BlockTime().Add(100 * time.Second)
-	f.Ctx = f.Ctx.WithBlockTime(t2)
-	resp2, err := msgServer.Withdraw(f.Ctx, &types.MsgWithdraw{
-		Sender: providerAddr.String(), ProviderUuid: provider.Uuid, Limit: 100,
-	})
-	require.NoError(t, err)
+	s.advance(100 * time.Second)
+	t2 := s.Ctx.BlockTime()
+	resp2 := s.withdraw(t, 100, nil)
 	require.False(t, resp2.HasMore)
+	require.Equal(t, uint64(5), resp2.WithdrawalCount)
+	// early: t1 -> t2 = 150s; active[0], active[1]: t1 -> t2 = 150s each;
+	// active[2], active[3]: t1b -> t2 = 100s each.
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(650))), resp2.TotalAmounts)
 
-	// The early lease is settled on the following cycle (deferred, not skipped),
-	// and every lease ends settled to the same t2 (no duplication).
-	for _, uuid := range append([]string{earlyUUID}, active...) {
-		lease, err := f.App.BillingKeeper.GetLease(f.Ctx, uuid)
-		require.NoError(t, err)
-		require.Equal(t, t2, lease.LastSettledAt, "lease %s should be settled to t2 on the following cycle", uuid)
+	// The early stream is settled on the following cycle (deferred, not skipped),
+	// and every stream ends settled to the same t2, having paid for exactly the
+	// time its lease was active (no gap, no duplication).
+	for _, tenant := range tenants {
+		requireSettledAt(t, tenant, t2, "stream should be settled to t2 on the following cycle")
 	}
+	require.Equal(t, sdkmath.NewInt(int64(t2.Sub(t1)/time.Second)), sdkmath.NewInt(1_000_000).Sub(s.credit(early, testDenom)))
+	for _, tenant := range active {
+		require.Equal(t, sdkmath.NewInt(int64(t2.Sub(t0)/time.Second)), sdkmath.NewInt(1_000_000).Sub(s.credit(tenant, testDenom)))
+	}
+	require.Equal(t, sdkmath.NewInt(1150), s.payout(testDenom))
+	s.requireInvariants(t)
 }

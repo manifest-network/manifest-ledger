@@ -155,6 +155,28 @@ type Keeper struct {
 	// conflict cannot leave a partially-applied lease record.
 	CustomDomainIndex collections.Map[string, types.CustomDomainTarget]
 
+	// Streams holds one settlement aggregate per (provider_uuid, tenant, denom).
+	// It is a plain Map on purpose: an IndexedMap rewrites every index on each
+	// Set, and a stream is rewritten on every settlement.
+	Streams collections.Map[StreamKey, types.StreamState]
+	// StreamsByTenant is the (tenant, (provider_uuid, denom)) reverse lookup for
+	// Streams, maintained by hand on stream create/delete only.
+	StreamsByTenant collections.KeySet[StreamTenantKey]
+	// StreamLeases lists the ACTIVE leases contributing to each stream, one
+	// entry per (stream, lease_uuid).
+	StreamLeases collections.KeySet[collections.Pair[StreamKey, string]]
+	// ExhaustedStreams queues exhausted streams for the EndBlocker drain. The
+	// value is the UUID of the last lease the drain attempted (empty at start).
+	ExhaustedStreams collections.Map[StreamKey, string]
+	// ExhaustedStreamsStart is the key of the last queued stream the drain
+	// served. The next block resumes after it, so the drain rotates through the
+	// queue instead of always starting at its head. Unset unless the queue holds
+	// more streams than one block can serve.
+	ExhaustedStreamsStart collections.Item[StreamKey]
+
+	// storeService gives migrations raw access to the module store.
+	storeService storetypes.KVStoreService
+
 	authority string
 
 	// keepers (to be set via setters for now, full DI later)
@@ -175,9 +197,10 @@ func NewKeeper(
 	sb := collections.NewSchemaBuilder(storeService)
 
 	k := Keeper{
-		cdc:       cdc,
-		logger:    logger,
-		authority: authority,
+		cdc:          cdc,
+		logger:       logger,
+		authority:    authority,
+		storeService: storeService,
 
 		Params: collections.NewItem(
 			sb,
@@ -225,6 +248,38 @@ func NewKeeper(
 			"leases_by_custom_domain",
 			collections.StringKey,
 			codec.CollValue[types.CustomDomainTarget](cdc),
+		),
+		Streams: collections.NewMap(
+			sb,
+			types.StreamKey,
+			"streams",
+			streamKeyCodec,
+			codec.CollValue[types.StreamState](cdc),
+		),
+		StreamsByTenant: collections.NewKeySet(
+			sb,
+			types.StreamByTenantIndexKey,
+			"streams_by_tenant",
+			streamTenantKeyCodec,
+		),
+		StreamLeases: collections.NewKeySet(
+			sb,
+			types.StreamLeaseKey,
+			"stream_leases",
+			collections.PairKeyCodec(streamKeyCodec, collections.StringKey),
+		),
+		ExhaustedStreams: collections.NewMap(
+			sb,
+			types.ExhaustedStreamKey,
+			"exhausted_streams",
+			streamKeyCodec,
+			collections.StringValue,
+		),
+		ExhaustedStreamsStart: collections.NewItem(
+			sb,
+			types.ExhaustedStreamStartKey,
+			"exhausted_streams_start",
+			collcodec.KeyToValueCodec(streamKeyCodec),
 		),
 	}
 
@@ -294,7 +349,7 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 	blockTime := sdkCtx.BlockTime()
 
 	// Validate timestamps against block time
-	// This ensures LastSettledAt is not in the future (important for chain restarts)
+	// This ensures no stream is settled in the future (important for chain restarts)
 	if err := gs.ValidateWithBlockTime(blockTime); err != nil {
 		return err
 	}
@@ -350,6 +405,25 @@ func (k *Keeper) InitGenesis(ctx context.Context, gs *types.GenesisState) error 
 		}
 	}
 
+	// GenesisState.Validate is not run on InitChain, so validate the settlement
+	// streams here: they decide what is paid to whom, and a malformed one (no
+	// last_settled_at, wrong rate) would misdirect funds from the first block.
+	if err := gs.ValidateStreams(); err != nil {
+		return err
+	}
+
+	// Restore the settlement streams and rebuild what is derived from them and
+	// from the leases (reverse lookup, membership, drain queue).
+	if err := k.initGenesisStreams(ctx, gs); err != nil {
+		return err
+	}
+
+	// Defence in depth: verify the state actually written (streams, reverse
+	// lookup, membership, drain queue) against the ACTIVE leases in the store.
+	if err := k.CheckStreamInvariant(ctx); err != nil {
+		return types.ErrInvalidLease.Wrapf("genesis streams do not match active leases: %s", err)
+	}
+
 	return nil
 }
 
@@ -383,11 +457,17 @@ func (k *Keeper) ExportGenesis(ctx context.Context) *types.GenesisState {
 		panic(err)
 	}
 
+	streams, err := k.GetAllStreams(ctx)
+	if err != nil {
+		panic(err)
+	}
+
 	return &types.GenesisState{
 		Params:         params,
 		Leases:         leases,
 		CreditAccounts: creditAccounts,
 		LeaseSequence:  leaseSeq,
+		Streams:        streams,
 	}
 }
 
@@ -509,10 +589,9 @@ func (k *Keeper) reconcileCustomDomainIndex(ctx context.Context, prev types.Leas
 	// Release any prev entry whose live domain disappeared, changed, or whose
 	// lease moved to terminal state. The Remove is gated on an ownership check
 	// against the current index target: terminal-state leases preserve their
-	// LeaseItem.CustomDomain field for audit, so subsequent SetLease calls on
-	// the same closed lease (e.g. post-close withdraw settlement, which updates
-	// LastSettledAt) re-derive prevByService from the still-populated field
-	// and would otherwise unconditionally Remove an entry that another lease
+	// LeaseItem.CustomDomain field for audit, so any subsequent SetLease call on
+	// the same closed lease re-derives prevByService from the still-populated
+	// field and would otherwise unconditionally Remove an entry that another lease
 	// has since legitimately claimed. Removing only when the index still
 	// targets (this lease, this service) closes that hole without sacrificing
 	// the audit-trail field on the closed lease record.
@@ -899,206 +978,6 @@ func (k *Keeper) getRelevantDenomsForTenant(ctx context.Context, tenant string, 
 	return denoms, nil
 }
 
-// CalculateWithdrawableForLease calculates the amounts that can be withdrawn from a lease.
-// It considers the time since last settlement and the credit balance available.
-// Returns a Coins collection (one entry per denom).
-func (k *Keeper) CalculateWithdrawableForLease(ctx context.Context, lease types.Lease) sdk.Coins {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	blockTime := sdkCtx.BlockTime()
-
-	// Calculate duration since last settlement
-	var duration time.Duration
-	if lease.State == types.LEASE_STATE_ACTIVE {
-		duration = blockTime.Sub(lease.LastSettledAt)
-	} else {
-		// For inactive leases, calculate from last settled to closed
-		if lease.ClosedAt != nil {
-			duration = lease.ClosedAt.Sub(lease.LastSettledAt)
-		} else {
-			return sdk.NewCoins()
-		}
-	}
-
-	if duration <= 0 {
-		return sdk.NewCoins()
-	}
-
-	// Calculate total accrued with overflow handling
-	items := LeaseItemsToWithPrice(lease.Items)
-	accruedAmounts, err := CalculateTotalAccruedForLease(items, duration)
-	if err != nil {
-		// Log overflow error and return empty
-		k.logger.Error("accrual calculation overflow in withdrawable calculation",
-			"lease_uuid", lease.Uuid,
-			"error", err,
-		)
-		return sdk.NewCoins()
-	}
-
-	if accruedAmounts.IsZero() {
-		return sdk.NewCoins()
-	}
-
-	// Get credit balances for only the lease's denoms to cap the withdrawable amounts
-	creditBalances, err := k.getCreditBalancesForDenoms(ctx, lease.Tenant, leaseItemDenoms(lease.Items))
-	if err != nil {
-		k.logger.Error("failed to get credit balances for withdrawable calculation",
-			"lease_uuid", lease.Uuid,
-			"tenant", lease.Tenant,
-			"error", err,
-		)
-		return sdk.NewCoins()
-	}
-
-	// For each denom, return the minimum of accrued amount and available balance
-	result := sdk.NewCoins()
-	for _, accrued := range accruedAmounts {
-		balance := creditBalances.AmountOf(accrued.Denom)
-		if balance.LT(accrued.Amount) {
-			if balance.IsPositive() {
-				result = result.Add(sdk.NewCoin(accrued.Denom, balance))
-			}
-		} else {
-			result = result.Add(accrued)
-		}
-	}
-
-	return result
-}
-
-// ShouldAutoCloseLease checks if a lease should be auto-closed due to exhausted credit.
-// This implements "lazy evaluation" / "check on touch" pattern.
-// Returns true if the lease should be closed, along with the close time to use.
-// This is O(1) per lease check, avoiding O(n) scanning of all leases in EndBlock.
-//
-// IMPORTANT: This function does NOT modify any state. The caller is responsible for:
-// 1. Calling PerformSettlementSilent to settle the lease
-// 2. Updating the lease state (State, ClosedAt, LastSettledAt)
-// 3. Updating the credit account's ActiveLeaseCount
-// 4. Persisting the changes
-// 5. Emitting the appropriate event
-//
-// The function performs settlement calculation to determine if the balance would be exhausted
-// after accrual, rather than just checking the current balance. This ensures leases are
-// closed promptly when credit runs out, even if the balance isn't exactly zero yet.
-func (k *Keeper) ShouldAutoCloseLease(ctx context.Context, lease *types.Lease) (shouldClose bool, closeTime time.Time, err error) {
-	// Only check active leases
-	if lease.State != types.LEASE_STATE_ACTIVE {
-		return false, time.Time{}, nil
-	}
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	blockTime := sdkCtx.BlockTime()
-
-	// Calculate duration since last settlement
-	duration := blockTime.Sub(lease.LastSettledAt)
-	if duration < 0 {
-		// LastSettledAt is in the future - this indicates data corruption or clock issues.
-		// Return an error rather than silently masking the issue, as this could leave
-		// leases in an invalid state where credit is exhausted but the lease stays active.
-		k.logger.Error("data inconsistency: LastSettledAt is in the future",
-			"lease_uuid", lease.Uuid,
-			"tenant", lease.Tenant,
-			"last_settled_at", lease.LastSettledAt,
-			"block_time", blockTime,
-			"difference", -duration,
-		)
-		return false, time.Time{}, types.ErrInvalidLease.Wrapf(
-			"lease %s has LastSettledAt (%s) in the future relative to block time (%s)",
-			lease.Uuid, lease.LastSettledAt, blockTime,
-		)
-	}
-
-	// Check tenant's credit balances for only the lease's denoms
-	creditBalances, err := k.getCreditBalancesForDenoms(ctx, lease.Tenant, leaseItemDenoms(lease.Items))
-	if err != nil {
-		return false, time.Time{}, err
-	}
-
-	// Calculate what would be accrued for each denom
-	items := LeaseItemsToWithPrice(lease.Items)
-
-	// If duration is zero, no accrual - check if any balance is exhausted
-	shouldClose = false
-	if duration > 0 {
-		accruedAmounts, calcErr := CalculateTotalAccruedForLease(items, duration)
-		if calcErr != nil {
-			// Overflow in accrual calculation means the accrued amount is extremely large,
-			// which certainly exceeds any credit balance. Defensively close the lease.
-			k.logger.Error("accrual calculation overflow in auto-close check, closing lease defensively",
-				"lease_uuid", lease.Uuid,
-				"tenant", lease.Tenant,
-				"duration", duration.String(),
-				"error", calcErr,
-			)
-			shouldClose = true
-		} else {
-			// Check if any denom's accrued amount exceeds the balance
-			for _, accrued := range accruedAmounts {
-				balance := creditBalances.AmountOf(accrued.Denom)
-				if accrued.Amount.GTE(balance) {
-					shouldClose = true
-					break
-				}
-			}
-		}
-	} else {
-		// Check if any required denom balance is zero
-		for _, item := range lease.Items {
-			balance := creditBalances.AmountOf(item.LockedPrice.Denom)
-			if balance.IsZero() {
-				shouldClose = true
-				break
-			}
-		}
-	}
-
-	if !shouldClose {
-		return false, time.Time{}, nil
-	}
-
-	return true, blockTime, nil
-}
-
-// AutoCloseLeaseResult holds the result of an auto-close operation.
-type AutoCloseLeaseResult struct {
-	TransferAmounts sdk.Coins
-}
-
-// AutoCloseLease performs the auto-close sequence for a lease with exhausted credit.
-// It settles the lease, updates its state to CLOSED, decrements the active lease count,
-// and releases the reservation. All changes are applied to the provided context.
-// The caller is responsible for CacheContext management and event emission.
-func (k *Keeper) AutoCloseLease(ctx context.Context, lease *types.Lease, closeTime time.Time, minLeaseDuration uint64) (*AutoCloseLeaseResult, error) {
-	result, err := k.PerformSettlementSilent(ctx, lease, closeTime)
-	if err != nil {
-		return nil, err
-	}
-
-	lease.State = types.LEASE_STATE_CLOSED
-	lease.ClosedAt = &closeTime
-	lease.LastSettledAt = closeTime
-	lease.ClosureReason = types.ClosureReasonCreditExhausted
-
-	if err := k.SetLease(ctx, *lease); err != nil {
-		return nil, err
-	}
-
-	creditAccount, err := k.GetCreditAccount(ctx, lease.Tenant)
-	if err != nil {
-		return nil, err
-	}
-
-	k.DecrementActiveLeaseCount(&creditAccount, lease.Uuid)
-	k.ReleaseLeaseReservation(&creditAccount, lease, minLeaseDuration)
-
-	if err := k.SetCreditAccount(ctx, creditAccount); err != nil {
-		return nil, err
-	}
-
-	return &AutoCloseLeaseResult{TransferAmounts: result.TransferAmounts}, nil
-}
-
 // DecrementActiveLeaseCount decrements the active lease count on a credit account.
 // If the count is already zero, it logs a warning about data inconsistency but does not fail.
 // This helper ensures consistent handling of lease count decrements across all code paths.
@@ -1375,10 +1254,12 @@ func (k *Keeper) ExpirePendingLease(ctx context.Context, lease *types.Lease) err
 	return nil
 }
 
-// EndBlocker processes pending lease expirations.
+// EndBlocker processes pending lease expirations, then closes the leases of
+// streams frozen for exhausted credit.
 // It uses an iterator to process leases one-by-one without loading all into memory,
 // preventing DoS attacks from large numbers of pending leases.
-// Rate limited to MaxPendingLeaseExpirationsPerBlock expirations per block.
+// Rate limited to MaxPendingLeaseExpirationsPerBlock expirations and
+// MaxAutoClosesPerBlock auto-closes per block.
 func (k *Keeper) EndBlocker(ctx context.Context) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	blockTime := sdkCtx.BlockTime()
@@ -1500,6 +1381,9 @@ func (k *Keeper) EndBlocker(ctx context.Context) error {
 			"limit", types.MaxPendingLeaseExpirationsPerBlock,
 		)
 	}
+
+	// Close the leases of streams frozen for exhausted credit (bounded per block).
+	k.DrainExhaustedStreams(ctx, params.MinLeaseDuration)
 
 	return nil
 }

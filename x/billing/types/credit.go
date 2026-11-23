@@ -56,6 +56,20 @@ func DeriveCreditAddressFromBech32(tenant string) (sdk.AccAddress, error) {
 	return DeriveCreditAddress(tenantAddr), nil
 }
 
+// CanonicalAddress returns the canonical (lower-case) bech32 spelling of an
+// address. Bech32 is also valid in upper case and the module stores tenant
+// addresses as they were sent, so two strings naming the same account are not
+// necessarily equal: canonicalize before comparing them or using them as map
+// keys. An invalid address is returned unchanged; validation rejects it
+// separately.
+func CanonicalAddress(addr string) string {
+	parsed, err := sdk.AccAddressFromBech32(addr)
+	if err != nil {
+		return addr
+	}
+	return parsed.String()
+}
+
 // GetAvailableCredit returns the balance minus reserved amounts per denom.
 // This represents the credit available for creating new leases.
 // For denoms that exist in balance but not in reserved, the full balance is available.
@@ -180,6 +194,7 @@ func CheckReservationRelease(reserved, toRelease sdk.Coins) map[string]sdkmath.I
 
 // CalculateExpectedReservationsByTenant computes the expected total reservation per tenant
 // from a list of leases. Only PENDING and ACTIVE leases contribute to reservations.
+// The result is keyed by the tenant's canonical address (see CanonicalAddress).
 // This is useful for genesis validation and debugging/testing.
 func CalculateExpectedReservationsByTenant(leases []Lease, fallbackMinLeaseDuration uint64) map[string]sdk.Coins {
 	expected := make(map[string]sdk.Coins)
@@ -188,10 +203,11 @@ func CalculateExpectedReservationsByTenant(leases []Lease, fallbackMinLeaseDurat
 		lease := &leases[i]
 		if lease.State == LEASE_STATE_PENDING || lease.State == LEASE_STATE_ACTIVE {
 			reservation := GetLeaseReservationAmount(lease, fallbackMinLeaseDuration)
-			if existing, ok := expected[lease.Tenant]; ok {
-				expected[lease.Tenant] = existing.Add(reservation...)
+			tenant := CanonicalAddress(lease.Tenant)
+			if existing, ok := expected[tenant]; ok {
+				expected[tenant] = existing.Add(reservation...)
 			} else {
-				expected[lease.Tenant] = reservation
+				expected[tenant] = reservation
 			}
 		}
 	}

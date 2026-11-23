@@ -43,7 +43,7 @@ GoReleaser snapshot and release archives use Ubuntu 22.04 to preserve the glibc 
 
 - **sku**: Provider and billing unit management. Providers represent service entities; SKUs represent billable items with per-hour or per-day pricing. Uses UUIDv7 identifiers.
 
-- **billing**: Credit-based leasing system. Tenants fund credit accounts, create leases for SKUs with locked-in pricing. Features lazy settlement (on-touch) and automatic lease closure on credit exhaustion.
+- **billing**: Credit-based leasing system. Tenants fund credit accounts, create leases for SKUs with locked-in pricing. Accrual is settled lazily (on-touch) per stream, one per (provider, tenant, denom), not per lease; a settlement that finds credit exhausted freezes the stream and the EndBlocker closes its leases (capped per block).
 
 ### Key Files
 
@@ -56,7 +56,7 @@ GoReleaser snapshot and release archives use Ubuntu 22.04 to preserve the glibc 
 
 BeginBlockers: manifest (minting) -> distr -> slashing -> evidence -> poa -> staking -> ...
 
-EndBlockers: crisis -> gov -> poa -> staking -> ... -> billing (pending lease expiration) -> wasm
+EndBlockers: crisis -> gov -> poa -> staking -> ... -> billing (pending lease expiration, auto-close of exhausted streams) -> wasm
 
 Genesis: capability -> tokenfactory -> auth -> bank -> ... -> poa -> manifest -> sku -> billing -> wasm
 

@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -480,28 +481,162 @@ func TestSetItemCustomDomain_LifecycleCleanup_Reject(t *testing.T) {
 	require.False(t, has)
 }
 
+// TestSetItemCustomDomain_LifecycleCleanup_AutoCloseLease verifies that the
+// custom-domain index is released when a lease is closed for exhausted credit
+// by the EndBlocker drain — the only place such a lease is closed now that a
+// settlement merely freezes the stream.
 func TestSetItemCustomDomain_LifecycleCleanup_AutoCloseLease(t *testing.T) {
 	s := setupCustomDomain(t)
+	k := s.f.App.BillingKeeper
 
-	_, err := s.f.App.BillingKeeper.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "auto.example.com")
+	// The fixture's 1-item lease and a multi-item lease share one stream (same
+	// tenant, provider and denom), so both are closed by the same drain.
+	multiUUID := s.createMultiItemLease(t)
+	domains := map[string]string{
+		"auto.example.com":     s.leaseUUID,
+		"auto-web.example.com": multiUUID,
+		"auto-db.example.com":  multiUUID,
+	}
+	_, err := k.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), s.leaseUUID, "", "auto.example.com")
+	require.NoError(t, err)
+	_, err = k.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), multiUUID, serviceWeb, "auto-web.example.com")
+	require.NoError(t, err)
+	_, err = k.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), multiUUID, serviceDB, "auto-db.example.com")
 	require.NoError(t, err)
 
+	// 100_000_000 of credit at 3/s is gone long before this.
 	s.f.Ctx = s.f.Ctx.WithBlockTime(s.f.Ctx.BlockTime().Add(200_000_000 * time.Second))
 
-	lease, err := s.f.App.BillingKeeper.GetLease(s.f.Ctx, s.leaseUUID)
+	// The settlement that finds the credit exhausted only freezes the stream:
+	// the leases are still ACTIVE, so their domains must still resolve.
+	resp, err := s.msgServer.Withdraw(s.f.Ctx, &types.MsgWithdraw{
+		Sender:       s.providerAddr.String(),
+		ProviderUuid: s.provider.Uuid,
+	})
 	require.NoError(t, err)
-	shouldClose, closeTime, err := s.f.App.BillingKeeper.ShouldAutoCloseLease(s.f.Ctx, &lease)
+	require.Equal(t, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(100_000_000))), resp.TotalAmounts)
+	state, err := k.Streams.Get(s.f.Ctx, keeper.NewStreamKey(s.provider.Uuid, s.tenant, testDenom))
 	require.NoError(t, err)
-	require.True(t, shouldClose)
+	require.True(t, state.IsExhausted())
 
-	params, err := s.f.App.BillingKeeper.GetParams(s.f.Ctx)
+	for domain, leaseUUID := range domains {
+		got, _, has, err := k.GetLeaseByCustomDomain(s.f.Ctx, domain)
+		require.NoError(t, err)
+		require.True(t, has, "%s must resolve while its lease is still ACTIVE", domain)
+		require.Equal(t, leaseUUID, got.Uuid)
+		require.Equal(t, types.LEASE_STATE_ACTIVE, got.State)
+	}
+
+	// The EndBlocker closes both leases and releases every index entry.
+	s.f.Ctx = s.f.Ctx.WithEventManager(sdk.NewEventManager())
+	require.NoError(t, k.EndBlocker(s.f.Ctx))
+	require.Equal(t, 2, countEvents(s.f.Ctx, types.EventTypeLeaseAutoClose))
+
+	for domain, leaseUUID := range domains {
+		_, _, has, err := k.GetLeaseByCustomDomain(s.f.Ctx, domain)
+		require.NoError(t, err)
+		require.False(t, has, "index entry for %s must be removed on auto-close", domain)
+
+		lease, err := k.GetLease(s.f.Ctx, leaseUUID)
+		require.NoError(t, err)
+		require.Equal(t, types.LEASE_STATE_CLOSED, lease.State)
+		require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason)
+	}
+
+	// The lease records keep their custom_domain for audit.
+	closed, err := k.GetLease(s.f.Ctx, multiUUID)
 	require.NoError(t, err)
-	_, err = s.f.App.BillingKeeper.AutoCloseLease(s.f.Ctx, &lease, closeTime, params.MinLeaseDuration)
+	domainsByService := map[string]string{}
+	for _, item := range closed.Items {
+		domainsByService[item.ServiceName] = item.CustomDomain
+	}
+	require.Equal(t, "auto-web.example.com", domainsByService[serviceWeb])
+	require.Equal(t, "auto-db.example.com", domainsByService[serviceDB])
+	requireInvariants(t, s.f)
+
+	// A released domain can be claimed again by a new lease.
+	creditAddr := types.DeriveCreditAddress(s.tenant)
+	s.f.fundAccount(t, creditAddr, sdk.NewCoins(sdk.NewCoin(testDenom, sdkmath.NewInt(1_000_000))))
+	reclaimUUID := s.f.createAndAcknowledgeLease(t, s.msgServer, s.tenant, s.providerAddr, []types.LeaseItemInput{
+		{SkuUuid: s.sku.Uuid, Quantity: 1},
+	})
+	_, err = k.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), reclaimUUID, "", "auto.example.com")
+	require.NoError(t, err)
+	got, _, has, err := k.GetLeaseByCustomDomain(s.f.Ctx, "auto.example.com")
+	require.NoError(t, err)
+	require.True(t, has)
+	require.Equal(t, reclaimUUID, got.Uuid)
+	requireInvariants(t, s.f)
+}
+
+// TestSetItemCustomDomain_LifecycleCleanup_AutoCloseLease_PartialDrain verifies
+// that when the EndBlocker needs several blocks to drain a frozen stream, a
+// domain is released exactly when its own lease is closed, not before.
+func TestSetItemCustomDomain_LifecycleCleanup_AutoCloseLease_PartialDrain(t *testing.T) {
+	s := setupCustomDomain(t)
+	k := s.f.App.BillingKeeper
+
+	params, err := k.GetParams(s.f.Ctx)
+	require.NoError(t, err)
+	params.MaxLeasesPerTenant = 500
+	params.MaxPendingLeasesPerTenant = 500
+	require.NoError(t, k.SetParams(s.f.Ctx, params))
+
+	// One lease more than a block can close, each with its own domain.
+	const total = types.MaxAutoClosesPerBlock + 1
+	leaseDomains := map[string]string{s.leaseUUID: "drain-0.example.com"}
+	for i := 1; i < total; i++ {
+		uuid := s.f.createAndAcknowledgeLease(t, s.msgServer, s.tenant, s.providerAddr, []types.LeaseItemInput{
+			{SkuUuid: s.sku.Uuid, Quantity: 1},
+		})
+		leaseDomains[uuid] = fmt.Sprintf("drain-%d.example.com", i)
+	}
+	for uuid, domain := range leaseDomains {
+		_, err := k.SetItemCustomDomain(s.f.Ctx, s.tenant.String(), uuid, "", domain)
+		require.NoError(t, err)
+	}
+
+	s.f.Ctx = s.f.Ctx.WithBlockTime(s.f.Ctx.BlockTime().Add(200_000_000 * time.Second))
+	_, err = s.msgServer.Withdraw(s.f.Ctx, &types.MsgWithdraw{
+		Sender:       s.providerAddr.String(),
+		ProviderUuid: s.provider.Uuid,
+	})
 	require.NoError(t, err)
 
-	_, _, has, err := s.f.App.BillingKeeper.GetLeaseByCustomDomain(s.f.Ctx, "auto.example.com")
-	require.NoError(t, err)
-	require.False(t, has, "index entry must be removed on auto-close")
+	// requireIndexMatchesLeases checks every domain against its lease's state
+	// and returns how many leases are closed.
+	requireIndexMatchesLeases := func() int {
+		t.Helper()
+		closed := 0
+		for uuid, domain := range leaseDomains {
+			lease, err := k.GetLease(s.f.Ctx, uuid)
+			require.NoError(t, err)
+			_, _, has, err := k.GetLeaseByCustomDomain(s.f.Ctx, domain)
+			require.NoError(t, err)
+
+			switch lease.State {
+			case types.LEASE_STATE_ACTIVE:
+				require.True(t, has, "%s was released while lease %s is still ACTIVE", domain, uuid)
+			case types.LEASE_STATE_CLOSED:
+				closed++
+				require.False(t, has, "%s still resolves although lease %s is CLOSED", domain, uuid)
+				require.Equal(t, types.ClosureReasonCreditExhausted, lease.ClosureReason)
+			default:
+				t.Fatalf("lease %s is in unexpected state %s", uuid, lease.State)
+			}
+		}
+		return closed
+	}
+
+	require.Zero(t, requireIndexMatchesLeases(), "the freeze alone closes nothing")
+
+	require.NoError(t, k.EndBlocker(s.f.Ctx))
+	require.Equal(t, types.MaxAutoClosesPerBlock, requireIndexMatchesLeases())
+	requireInvariants(t, s.f)
+
+	require.NoError(t, k.EndBlocker(s.f.Ctx))
+	require.Equal(t, total, requireIndexMatchesLeases())
+	requireInvariants(t, s.f)
 }
 
 func TestSetItemCustomDomain_LifecycleCleanup_EndBlockerExpiry(t *testing.T) {
@@ -557,7 +692,6 @@ func TestInitGenesis_RebuildsCustomDomainIndex(t *testing.T) {
 			},
 			State:                      types.LEASE_STATE_PENDING,
 			CreatedAt:                  now,
-			LastSettledAt:              now,
 			MinLeaseDurationAtCreation: 3600,
 		}},
 		CreditAccounts: []types.CreditAccount{
@@ -595,7 +729,6 @@ func TestInitGenesis_DuplicateCustomDomainFails(t *testing.T) {
 			},
 			State:                      types.LEASE_STATE_PENDING,
 			CreatedAt:                  now,
-			LastSettledAt:              now,
 			MinLeaseDurationAtCreation: 3600,
 		}
 	}
@@ -867,32 +1000,6 @@ func TestSetLease_CrossSwap(t *testing.T) {
 
 // --- event attribute coverage ---
 
-// findEvent returns the most recent event with the given type from the
-// fixture's event manager, or fails the test if not found.
-func findEvent(t *testing.T, ctx sdk.Context, eventType string) sdk.Event {
-	t.Helper()
-	events := ctx.EventManager().Events()
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Type == eventType {
-			return events[i]
-		}
-	}
-	t.Fatalf("event %q not found among %d emitted events", eventType, len(events))
-	return sdk.Event{}
-}
-
-// attrValue returns the value of the named attribute from an event, or fails.
-func attrValue(t *testing.T, ev sdk.Event, key string) string {
-	t.Helper()
-	for _, a := range ev.Attributes {
-		if a.Key == key {
-			return a.Value
-		}
-	}
-	t.Fatalf("attribute %q not found on event %q", key, ev.Type)
-	return ""
-}
-
 func TestSetItemCustomDomain_SetEvent_Attributes_Legacy(t *testing.T) {
 	s := setupCustomDomain(t)
 
@@ -1045,17 +1152,6 @@ func TestSetItemCustomDomain_LifecycleCleanup_MultiItem_EndBlockerExpiry(t *test
 
 // --- idempotency: no state change + no event for no-op operations ---
 
-// countEvents returns how many events of the given type the context has emitted.
-func countEvents(ctx sdk.Context, eventType string) int {
-	n := 0
-	for _, ev := range ctx.EventManager().Events() {
-		if ev.Type == eventType {
-			n++
-		}
-	}
-	return n
-}
-
 // TestSetItemCustomDomain_IdempotentClear verifies that clearing a domain
 // on an item whose CustomDomain is already empty is a true no-op: no SetLease
 // write, no Cleared event, no state mutation. Caller still receives the role.
@@ -1200,11 +1296,11 @@ func TestSetLease_TerminalReconcileDoesNotPoisonAnotherLeasesIndexEntry(t *testi
 	require.Equal(t, leaseB, got.Uuid, "after re-claim, index points at lease B")
 	require.Equal(t, "web", sn)
 
-	// Now simulate a post-close settlement on lease A: SetLease is called on
-	// the still-CLOSED lease (e.g. withdrawFromLeases updating LastSettledAt
-	// after PerformSettlement on the residual accrual between LastSettledAt
-	// and ClosedAt). Pre-fix, this would Remove(sharedDomain) unconditionally
-	// because closedA.Items[0].CustomDomain is still set and editable=false.
+	// Now simulate a later write of lease A: SetLease is called on the
+	// still-CLOSED lease. Stream settlement never rewrites a closed lease, but
+	// SetLease must stay safe for any caller that does. Pre-fix, this would
+	// Remove(sharedDomain) unconditionally because
+	// closedA.Items[0].CustomDomain is still set and editable=false.
 	require.NoError(t, s.f.App.BillingKeeper.SetLease(s.f.Ctx, closedA))
 
 	// The fix asserts: lease B's index entry must survive the spurious

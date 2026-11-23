@@ -5,10 +5,16 @@ import (
 	"slices"
 	"time"
 
+	sdkmath "cosmossdk.io/math"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
 	pkguuid "github.com/manifest-network/manifest-ledger/pkg/uuid"
 )
+
+// streamRemainderLimit is the exclusive upper bound of StreamState.Remainder:
+// one whole unit of the denom, expressed in (denom units × nanoseconds).
+var streamRemainderLimit = sdkmath.NewInt(1_000_000_000)
 
 // DefaultGenesis returns the default genesis state.
 func DefaultGenesis() *GenesisState {
@@ -16,6 +22,7 @@ func DefaultGenesis() *GenesisState {
 		Params:         DefaultParams(),
 		Leases:         []Lease{},
 		CreditAccounts: []CreditAccount{},
+		Streams:        []Stream{},
 	}
 }
 
@@ -169,17 +176,20 @@ func (gs *GenesisState) Validate() error {
 		}
 	}
 
-	// Validate credit accounts
+	// Validate credit accounts. Tenants are compared by address, not by how the
+	// address is spelled: the cross-checks below key their maps with
+	// CanonicalAddress, because a lease and its credit account may store the
+	// same tenant in different (upper/lower case) bech32 spellings.
 	seenTenants := make(map[string]bool)
 	for _, ca := range gs.CreditAccounts {
 		if ca.Tenant == "" {
 			return ErrInvalidCreditOperation.Wrap("credit account has empty tenant")
 		}
 
-		if seenTenants[ca.Tenant] {
+		if seenTenants[CanonicalAddress(ca.Tenant)] {
 			return ErrInvalidCreditOperation.Wrapf("duplicate credit account for tenant: %s", ca.Tenant)
 		}
-		seenTenants[ca.Tenant] = true
+		seenTenants[CanonicalAddress(ca.Tenant)] = true
 
 		if _, err := sdk.AccAddressFromBech32(ca.Tenant); err != nil {
 			return ErrInvalidCreditOperation.Wrapf("credit account has invalid tenant address: %s", err)
@@ -215,7 +225,7 @@ func (gs *GenesisState) Validate() error {
 
 	// Check each credit account's reserved_amounts matches expected
 	for _, ca := range gs.CreditAccounts {
-		expected := expectedReservations[ca.Tenant]
+		expected := expectedReservations[CanonicalAddress(ca.Tenant)]
 		if expected == nil {
 			expected = sdk.NewCoins()
 		}
@@ -251,14 +261,14 @@ func (gs *GenesisState) Validate() error {
 	for _, lease := range gs.Leases {
 		switch lease.State {
 		case LEASE_STATE_ACTIVE:
-			activeCounts[lease.Tenant]++
+			activeCounts[CanonicalAddress(lease.Tenant)]++
 		case LEASE_STATE_PENDING:
-			pendingCounts[lease.Tenant]++
+			pendingCounts[CanonicalAddress(lease.Tenant)]++
 		}
 	}
 
 	for _, ca := range gs.CreditAccounts {
-		expectedActive := activeCounts[ca.Tenant]
+		expectedActive := activeCounts[CanonicalAddress(ca.Tenant)]
 		if ca.ActiveLeaseCount != expectedActive {
 			return ErrInvalidCreditOperation.Wrapf(
 				"credit account for %s has active_lease_count %d but has %d active leases",
@@ -266,7 +276,7 @@ func (gs *GenesisState) Validate() error {
 			)
 		}
 
-		expectedPending := pendingCounts[ca.Tenant]
+		expectedPending := pendingCounts[CanonicalAddress(ca.Tenant)]
 		if ca.PendingLeaseCount != expectedPending {
 			return ErrInvalidCreditOperation.Wrapf(
 				"credit account for %s has pending_lease_count %d but has %d pending leases",
@@ -285,24 +295,119 @@ func (gs *GenesisState) Validate() error {
 		)
 	}
 
+	return gs.ValidateStreams()
+}
+
+// ValidateStreams validates everything in the genesis that concerns settlement
+// streams: no lease may still carry the deprecated last_settled_at, and the
+// streams must be exactly the ones the ACTIVE leases imply, with the rate and
+// lease count they imply.
+//
+// It is part of Validate and is also run by the keeper's InitGenesis, because
+// Validate itself is not run on InitChain and a malformed stream moves money:
+// a stream without last_settled_at, for example, would look centuries overdue
+// and pay the tenant's whole credit to the provider on its first settlement.
+func (gs *GenesisState) ValidateStreams() error {
+	// last_settled_at is deprecated: settlement is tracked per stream. A
+	// genesis that still carries it was exported before stream settlement and
+	// cannot be imported as is.
+	for i := range gs.Leases {
+		if gs.Leases[i].LastSettledAt != nil { //nolint:staticcheck // the deprecated field must be read to be rejected
+			return ErrInvalidLease.Wrapf(
+				"lease %s has last_settled_at set: the field is deprecated, settlement is tracked in streams",
+				gs.Leases[i].Uuid,
+			)
+		}
+	}
+
+	expected, err := ExpectedStreamAggregates(gs.Leases)
+	if err != nil {
+		return ErrInvalidLease.Wrap(err.Error())
+	}
+
+	seen := make(map[StreamID]bool, len(gs.Streams))
+	for _, stream := range gs.Streams {
+		id := stream.ID()
+
+		if _, err := sdk.AccAddressFromBech32(stream.Tenant); err != nil {
+			return ErrInvalidLease.Wrapf("stream %v has invalid tenant address: %s", id, err)
+		}
+		if seen[id] {
+			return ErrInvalidLease.Wrapf("duplicate stream %v", id)
+		}
+		seen[id] = true
+
+		if stream.State.Rate.IsNil() || !stream.State.Rate.IsPositive() {
+			return ErrInvalidLease.Wrapf("stream %v has non-positive rate", id)
+		}
+		if stream.State.LastSettledAt.IsZero() {
+			return ErrInvalidLease.Wrapf("stream %v has no last_settled_at timestamp", id)
+		}
+		// The remainder is what a settlement could not pay as a whole unit: it
+		// is the rest of a division by 1e9 (see StreamState.remainder).
+		if r := stream.State.Remainder; !r.IsNil() && (r.IsNegative() || r.GTE(streamRemainderLimit)) {
+			return ErrInvalidLease.Wrapf("stream %v has remainder %s outside [0, %s)", id, r, streamRemainderLimit)
+		}
+		// Arrears are an amount owed on top of the accrual (see StreamState.arrears).
+		if a := stream.State.Arrears; !a.IsNil() && a.IsNegative() {
+			return ErrInvalidLease.Wrapf("stream %v has negative arrears %s", id, a)
+		}
+
+		want, ok := expected[id]
+		if !ok {
+			return ErrInvalidLease.Wrapf("stream %v has no active lease", id)
+		}
+		if !stream.State.Rate.Equal(want.Rate) {
+			return ErrInvalidLease.Wrapf(
+				"stream %v has rate %s but its active leases sum to %s",
+				id, stream.State.Rate, want.Rate,
+			)
+		}
+		if stream.State.LeaseCount != want.LeaseCount {
+			return ErrInvalidLease.Wrapf(
+				"stream %v has lease_count %d but has %d active leases",
+				id, stream.State.LeaseCount, want.LeaseCount,
+			)
+		}
+	}
+
+	// Every stream the leases imply must be present. Walk the expected streams
+	// in sorted order so the error names the same one on every run.
+	for _, id := range slices.SortedFunc(maps.Keys(expected), CompareStreamIDs) {
+		if !seen[id] {
+			return ErrInvalidLease.Wrapf("active leases imply stream %v but it is missing", id)
+		}
+	}
+
 	return nil
 }
 
 // ValidateWithBlockTime performs additional genesis state validation that requires block time.
 // This is called during InitGenesis when block time is available.
-// It validates that LastSettledAt timestamps are not in the future relative to block time.
+// It validates that lease and stream timestamps are not in the future relative to block time.
 func (gs *GenesisState) ValidateWithBlockTime(blockTime time.Time) error {
-	for _, lease := range gs.Leases {
-		// Validate LastSettledAt is not in the future
-		if lease.LastSettledAt.After(blockTime) {
+	for _, stream := range gs.Streams {
+		// A stream settled in the future would accrue nothing until block time
+		// catches up, giving the tenant free service.
+		if stream.State.LastSettledAt.After(blockTime) {
 			return ErrInvalidLease.Wrapf(
-				"lease %s has last_settled_at (%s) in the future relative to block time (%s)",
-				lease.Uuid,
-				lease.LastSettledAt.String(),
+				"stream %v has last_settled_at (%s) in the future relative to block time (%s)",
+				stream.ID(),
+				stream.State.LastSettledAt.String(),
 				blockTime.String(),
 			)
 		}
+		if stream.State.ExhaustedAt != nil && stream.State.ExhaustedAt.After(blockTime) {
+			return ErrInvalidLease.Wrapf(
+				"stream %v has exhausted_at (%s) in the future relative to block time (%s)",
+				stream.ID(),
+				stream.State.ExhaustedAt.String(),
+				blockTime.String(),
+			)
+		}
+	}
 
+	for _, lease := range gs.Leases {
 		// Validate CreatedAt is not in the future
 		if lease.CreatedAt.After(blockTime) {
 			return ErrInvalidLease.Wrapf(

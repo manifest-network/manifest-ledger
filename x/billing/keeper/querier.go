@@ -311,36 +311,37 @@ func (q Querier) CreditAddress(_ context.Context, req *types.QueryCreditAddressR
 	return &types.QueryCreditAddressResponse{CreditAddress: creditAddr.String()}, nil
 }
 
-// WithdrawableAmount queries the amounts available for provider withdrawal from a lease.
-func (q Querier) WithdrawableAmount(ctx context.Context, req *types.QueryWithdrawableAmountRequest) (*types.QueryWithdrawableAmountResponse, error) {
-	if req == nil {
-		return nil, status.Error(codes.InvalidArgument, "empty request")
+// WithdrawableAmount queried the amounts available for provider withdrawal from a lease.
+//
+// Deprecated: settlement is per stream, so a lease has no withdrawable amount
+// of its own. The method is kept so existing clients get an explicit error
+// naming the replacement (ADR-044) instead of a missing-method failure.
+func (q Querier) WithdrawableAmount(_ context.Context, _ *types.QueryWithdrawableAmountRequest) (*types.QueryWithdrawableAmountResponse, error) {
+	return nil, status.Error(codes.Unimplemented,
+		"per-lease withdrawable amounts are no longer available: settlement is per stream, use ProviderWithdrawable or StreamsByProvider")
+}
+
+// normalizeStreamPageRequest defaults and caps the page limit of a stream
+// query to bound its cost, preserving any cursor/order the caller supplied.
+func normalizeStreamPageRequest(req *query.PageRequest) *query.PageRequest {
+	pageReq := query.PageRequest{}
+	if req != nil {
+		pageReq = *req
 	}
-
-	if req.LeaseUuid == "" {
-		return nil, status.Error(codes.InvalidArgument, "lease_uuid cannot be empty")
+	if pageReq.Limit == 0 {
+		pageReq.Limit = types.DefaultProviderWithdrawableQueryLimit
 	}
-
-	// Use simple GetLease for queries - auto-close only happens during transactions
-	lease, err := q.k.GetLease(ctx, req.LeaseUuid)
-	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+	if pageReq.Limit > types.MaxProviderWithdrawableQueryLimit {
+		pageReq.Limit = types.MaxProviderWithdrawableQueryLimit
 	}
-
-	// Calculate withdrawable amounts based on accrual since last settlement
-	withdrawableAmounts := q.k.CalculateWithdrawableForLease(ctx, lease)
-
-	return &types.QueryWithdrawableAmountResponse{
-		Amounts: withdrawableAmounts,
-	}, nil
+	return &pageReq
 }
 
 // ProviderWithdrawable queries the withdrawable amounts for a provider, paginated
-// over the provider's ACTIVE leases (the only state CalculateWithdrawableForLease
-// can return a non-zero amount for). It mirrors how LeasesByProvider paginates and
-// is symmetric with provider-wide MsgWithdraw: loop until pagination.next_key is
-// empty and sum the per-page amounts for the provider's full withdrawable total.
-// The page size defaults to DefaultProviderWithdrawableQueryLimit and is capped at
+// over the provider's streams. It is symmetric with MsgWithdraw: loop until
+// pagination.next_key is empty and sum the per-page amounts for the provider's
+// full withdrawable total. The page size defaults to
+// DefaultProviderWithdrawableQueryLimit and is capped at
 // MaxProviderWithdrawableQueryLimit to bound query cost.
 func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProviderWithdrawableRequest) (*types.QueryProviderWithdrawableResponse, error) {
 	if req == nil {
@@ -351,45 +352,111 @@ func (q Querier) ProviderWithdrawable(ctx context.Context, req *types.QueryProvi
 		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
 	}
 
-	// Normalize pagination: default and cap the page limit to bound query cost,
-	// preserving any cursor/order the caller supplied.
-	pageReq := query.PageRequest{}
-	if req.Pagination != nil {
-		pageReq = *req.Pagination
-	}
-	if pageReq.Limit == 0 {
-		pageReq.Limit = types.DefaultProviderWithdrawableQueryLimit
-	}
-	if pageReq.Limit > types.MaxProviderWithdrawableQueryLimit {
-		pageReq.Limit = types.MaxProviderWithdrawableQueryLimit
+	blockTime := sdk.UnwrapSDKContext(ctx).BlockTime()
+
+	type streamAmount struct {
+		amount     sdk.Coin
+		leaseCount uint64
 	}
 
-	// Iterate ACTIVE leases only via the compound (provider, state) index,
-	// reusing the same index-pagination helpers as LeasesByProvider.
-	key := collections.Join(req.ProviderUuid, int32(types.LEASE_STATE_ACTIVE))
-	iter, err := pagination.MatchExactWithOrder(ctx, q.k.Leases.Indexes.ProviderState, key, &pageReq)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-
-	leases, pageRes, err := pagination.PaginateStringIndex(ctx, iter, q.k.Leases.Get, &pageReq, nil)
+	// Within one provider every stream has a distinct (tenant, denom), so each
+	// stream is capped by a credit balance no other stream of the page shares.
+	amounts, pageRes, err := query.CollectionPaginate(
+		ctx,
+		q.k.Streams,
+		normalizeStreamPageRequest(req.Pagination),
+		func(key StreamKey, state types.StreamState) (streamAmount, error) {
+			return streamAmount{
+				amount:     q.k.streamWithdrawable(ctx, key, state, blockTime),
+				leaseCount: state.LeaseCount,
+			}, nil
+		},
+		query.WithCollectionPaginationPairPrefix[string, collections.Pair[sdk.AccAddress, string]](req.ProviderUuid),
+	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	totalWithdrawable := sdk.NewCoins()
 	var leaseCount uint64
-	for i := range leases {
-		withdrawable := q.k.CalculateWithdrawableForLease(ctx, leases[i])
-		if !withdrawable.IsZero() {
-			totalWithdrawable = totalWithdrawable.Add(withdrawable...)
-			leaseCount++
+	for _, a := range amounts {
+		if a.amount.IsPositive() {
+			totalWithdrawable = totalWithdrawable.Add(a.amount)
+			leaseCount += a.leaseCount
 		}
 	}
 
 	return &types.QueryProviderWithdrawableResponse{
 		Amounts:    totalWithdrawable,
 		LeaseCount: leaseCount,
+		Pagination: pageRes,
+	}, nil
+}
+
+// StreamsByProvider queries the settlement streams of a provider.
+func (q Querier) StreamsByProvider(ctx context.Context, req *types.QueryStreamsByProviderRequest) (*types.QueryStreamsByProviderResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	if req.ProviderUuid == "" {
+		return nil, status.Error(codes.InvalidArgument, "provider_uuid cannot be empty")
+	}
+
+	streams, pageRes, err := query.CollectionPaginate(
+		ctx,
+		q.k.Streams,
+		normalizeStreamPageRequest(req.Pagination),
+		func(key StreamKey, state types.StreamState) (types.Stream, error) {
+			return streamFromState(key, state), nil
+		},
+		query.WithCollectionPaginationPairPrefix[string, collections.Pair[sdk.AccAddress, string]](req.ProviderUuid),
+	)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryStreamsByProviderResponse{
+		Streams:    streams,
+		Pagination: pageRes,
+	}, nil
+}
+
+// StreamsByTenant queries the settlement streams paid by a tenant.
+func (q Querier) StreamsByTenant(ctx context.Context, req *types.QueryStreamsByTenantRequest) (*types.QueryStreamsByTenantResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	if req.Tenant == "" {
+		return nil, status.Error(codes.InvalidArgument, "tenant cannot be empty")
+	}
+
+	tenantAddr, err := sdk.AccAddressFromBech32(req.Tenant)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid tenant address")
+	}
+
+	streams, pageRes, err := query.CollectionPaginate(
+		ctx,
+		q.k.StreamsByTenant,
+		normalizeStreamPageRequest(req.Pagination),
+		func(tenantKey StreamTenantKey, _ collections.NoValue) (types.Stream, error) {
+			key := NewStreamKey(tenantKey.K2().K1(), tenantKey.K1(), tenantKey.K2().K2())
+			state, err := q.k.Streams.Get(ctx, key)
+			if err != nil {
+				return types.Stream{}, err
+			}
+			return streamFromState(key, state), nil
+		},
+		query.WithCollectionPaginationPairPrefix[sdk.AccAddress, collections.Pair[string, string]](tenantAddr),
+	)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryStreamsByTenantResponse{
+		Streams:    streams,
 		Pagination: pageRes,
 	}, nil
 }
@@ -479,6 +546,12 @@ func (q Querier) LeasesBySKU(ctx context.Context, req *types.QueryLeasesBySKUReq
 }
 
 // CreditEstimate estimates remaining lease duration for a tenant.
+//
+// The burn rate is read from the tenant's streams, so the cost is O(streams)
+// rather than O(leases). A stream frozen for exhausted credit no longer
+// accrues and is left out of the rate. What the streams have accrued but not
+// yet settled is already owed to providers, so it is deducted from the balance
+// before estimating.
 func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstimateRequest) (*types.QueryCreditEstimateResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -494,76 +567,106 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 	}
 
 	// Verify credit account exists
-	if _, err := q.k.GetCreditAccount(ctx, req.Tenant); err != nil {
+	creditAccount, err := q.k.GetCreditAccount(ctx, req.Tenant)
+	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	// Bound the active-lease iteration by the param-derived active-lease cap (clamped to the
-	// params' upper bounds as a hard safety ceiling). This keeps the burn-rate estimate correct
-	// for any legal state while remaining bounded against DoS on tenants with many leases.
+	// The number of streams of a tenant is bounded by its active leases times
+	// the items per lease; bound the walk by the same param-derived cap used
+	// for per-tenant lease iteration (clamped to the params' upper bounds).
 	params, err := q.k.GetParams(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-	maxActiveLeases := activeLeaseIterationCap(params)
+	maxStreams := activeLeaseIterationCap(params) * max(params.MaxItemsPerLease, 1)
 
-	// Calculate total rate per second across all active leases.
-	// Also collect relevant denoms for per-denom balance queries (DoS mitigation).
-	totalRatePerSecond := sdk.NewCoins()
-	var activeLeaseCount uint64
+	blockTime := sdk.UnwrapSDKContext(ctx).BlockTime()
+
+	// Per-denom totals are summed with checked arithmetic: every stream's rate
+	// and accrual fits sdkmath.Int, but their sum over several streams may
+	// not, and sdk.Coins.Add panics on overflow.
+	rates := make(map[string]sdkmath.Int)
+	unsettled := make(map[string]sdkmath.Int)
 	denomSet := make(map[string]struct{})
 	denoms := make([]string, 0, 4)
 
-	// Use TenantState compound index to iterate only over active leases - O(k) instead of O(n)
-	key := collections.Join(tenantAddr, int32(types.LEASE_STATE_ACTIVE))
-	iter, err := q.k.Leases.Indexes.TenantState.MatchExact(ctx, key)
+	rng := collections.NewPrefixedPairRange[sdk.AccAddress, collections.Pair[string, string]](tenantAddr)
+	iter, err := q.k.StreamsByTenant.Iterate(ctx, rng)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	defer iter.Close()
 
-	for ; iter.Valid(); iter.Next() {
-		// Bounded by the param-derived cap (see maxActiveLeases above). Check before the
-		// increment (mirroring getRelevantDenomsForTenant) so ActiveLeaseCount and the
-		// summed set never diverge if the cap is ever reached.
-		if activeLeaseCount >= maxActiveLeases {
-			break
-		}
-		activeLeaseCount++
+	var streamCount uint64
+	accrualOverflow := false
+	for ; iter.Valid() && streamCount < maxStreams; iter.Next() {
+		streamCount++
 
-		leaseUUID, err := iter.PrimaryKey()
+		tenantKey, err := iter.Key()
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		denom := tenantKey.K2().K2()
+		key := NewStreamKey(tenantKey.K2().K1(), tenantAddr, denom)
+
+		state, err := q.k.Streams.Get(ctx, key)
 		if err != nil {
 			return nil, status.Error(codes.Internal, err.Error())
 		}
 
-		lease, err := q.k.Leases.Get(ctx, leaseUUID)
-		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+		// Report the balance of every denom the tenant has a stream in, frozen
+		// or not; only non-frozen streams contribute to the burn rate.
+		if _, ok := denomSet[denom]; !ok {
+			denomSet[denom] = struct{}{}
+			denoms = append(denoms, denom)
+		}
+		if state.IsExhausted() {
+			continue
 		}
 
-		// Sum up rates for all items in this lease
-		for _, item := range lease.Items {
-			// Rate per second = locked_price * quantity
-			// locked_price is already in per-second terms
-			itemRate := sdk.NewCoin(item.LockedPrice.Denom, item.LockedPrice.Amount.Mul(sdkmath.NewIntFromUint64(item.Quantity)))
-			totalRatePerSecond = totalRatePerSecond.Add(itemRate)
-			if _, ok := denomSet[item.LockedPrice.Denom]; !ok {
-				denomSet[item.LockedPrice.Denom] = struct{}{}
-				denoms = append(denoms, item.LockedPrice.Denom)
-			}
+		rate, err := addChecked(rates[denom], state.Rate)
+		if err != nil {
+			return nil, status.Errorf(codes.OutOfRange, "total rate in %s is not representable: %s", denom, err)
 		}
+		rates[denom] = rate
+
+		// What a stream owes (its accrual plus any arrears), or the sum of what
+		// the streams owe, certainly exceeds the balance when it is not
+		// representable: the tenant has no time left.
+		accrued, _, representable := streamDue(state, blockTime)
+		if !representable {
+			accrualOverflow = true
+			continue
+		}
+		owed, err := addChecked(unsettled[denom], accrued)
+		if err != nil {
+			accrualOverflow = true
+			continue
+		}
+		unsettled[denom] = owed
 	}
 
-	// Fetch balances for only the denoms used by active leases (DoS mitigation).
+	// denoms is in store order; NewCoins sorts, so the result does not depend
+	// on map iteration.
+	rateCoins := make([]sdk.Coin, 0, len(denoms))
+	for _, denom := range denoms {
+		if rate, ok := rates[denom]; ok {
+			rateCoins = append(rateCoins, sdk.NewCoin(denom, rate))
+		}
+	}
+	totalRatePerSecond := sdk.NewCoins(rateCoins...)
+
+	// Fetch balances for only the denoms used by the streams (DoS mitigation).
 	currentBalance, err := q.k.getCreditBalancesForDenoms(ctx, req.Tenant, denoms)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	// Calculate estimated duration
-	// Find minimum duration across all denoms: min(balance[denom] / rate[denom])
+	// Find minimum duration across all denoms: min(remaining[denom] / rate[denom])
 	var estimatedDurationSeconds uint64
-	if activeLeaseCount > 0 && !totalRatePerSecond.IsZero() {
+	if !totalRatePerSecond.IsZero() && !accrualOverflow {
 		// Start with max uint64, then find minimum
 		estimatedDurationSeconds = math.MaxUint64
 
@@ -571,14 +674,18 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 			if rateCoin.Amount.IsZero() {
 				continue
 			}
-			balanceAmount := currentBalance.AmountOf(rateCoin.Denom)
-			if balanceAmount.IsZero() {
-				// No balance for this denom means immediate exhaustion
+			// What is already accrued is not available to pay for future time.
+			remaining := currentBalance.AmountOf(rateCoin.Denom)
+			if owed, ok := unsettled[rateCoin.Denom]; ok {
+				remaining = remaining.Sub(owed)
+			}
+			if !remaining.IsPositive() {
+				// Nothing left for this denom means immediate exhaustion
 				estimatedDurationSeconds = 0
 				break
 			}
-			// Duration = balance / rate (integer division, rounds down)
-			quotient := balanceAmount.Quo(rateCoin.Amount)
+			// Duration = remaining / rate (integer division, rounds down)
+			quotient := remaining.Quo(rateCoin.Amount)
 			var duration uint64
 			if quotient.IsUint64() {
 				duration = quotient.Uint64()
@@ -598,8 +705,17 @@ func (q Querier) CreditEstimate(ctx context.Context, req *types.QueryCreditEstim
 		CurrentBalance:           currentBalance,
 		TotalRatePerSecond:       totalRatePerSecond,
 		EstimatedDurationSeconds: estimatedDurationSeconds,
-		ActiveLeaseCount:         activeLeaseCount,
+		ActiveLeaseCount:         creditAccount.ActiveLeaseCount,
 	}, nil
+}
+
+// addChecked adds b to a, treating an unset a as zero, and returns an error
+// instead of panicking when the sum does not fit sdkmath.Int.
+func addChecked(a, b sdkmath.Int) (sdkmath.Int, error) {
+	if a.IsNil() {
+		return b, nil
+	}
+	return a.SafeAdd(b)
 }
 
 // paginateSKUIndex paginates over the LeaseBySKUIndex iterator.

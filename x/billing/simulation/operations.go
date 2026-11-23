@@ -687,176 +687,68 @@ func SimulateMsgCloseLease(txGen client.TxConfig, k keeper.Keeper) simtypes.Oper
 	}
 }
 
-// SimulateMsgWithdraw generates a MsgWithdraw with random values.
-// Randomly chooses between specific lease mode and provider-wide mode.
+// SimulateMsgWithdraw generates a MsgWithdraw with random values: a random
+// provider that has at least one settlement stream, and a random page limit.
 func SimulateMsgWithdraw(txGen client.TxConfig, k keeper.Keeper, sk SKUKeeper) simtypes.Operation {
 	return func(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgWithdraw{})
 
-		// Get all leases
-		allLeases, err := k.GetAllLeases(ctx)
-		if err != nil || len(allLeases) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "no leases found"), nil, nil
+		streams, err := k.GetAllStreams(ctx)
+		if err != nil || len(streams) == 0 {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "no streams found"), nil, nil
 		}
 
-		// Filter to leases that have withdrawable amounts
-		var withdrawableLeases []types.Lease
-		for _, lease := range allLeases {
-			// Calculate withdrawable amount for this lease
-			withdrawable := k.CalculateWithdrawableForLease(ctx, lease)
-			if !withdrawable.IsZero() {
-				withdrawableLeases = append(withdrawableLeases, lease)
+		// Collect unique provider UUIDs in store (key) order.
+		// A map range would randomise the slice and break simulation determinism.
+		seen := make(map[string]struct{})
+		uuids := make([]string, 0, 4)
+		for _, stream := range streams {
+			if _, ok := seen[stream.ProviderUuid]; !ok {
+				seen[stream.ProviderUuid] = struct{}{}
+				uuids = append(uuids, stream.ProviderUuid)
 			}
 		}
 
-		if len(withdrawableLeases) == 0 {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "no leases with withdrawable amount"), nil, nil
+		providerUUID := uuids[r.Intn(len(uuids))]
+
+		// Get provider to find the provider address
+		provider, err := sk.GetProvider(ctx, providerUUID)
+		if err != nil {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "provider not found"), nil, nil
 		}
 
-		// Randomly choose between specific lease mode (50%) and provider-wide mode (50%)
-		useProviderWideMode := r.Intn(2) == 0
-
-		if useProviderWideMode {
-			return simulateProviderWideWithdraw(r, app, ctx, txGen, accs, sk, k, withdrawableLeases)
+		// Find the provider address account
+		var sender simtypes.Account
+		var found bool
+		for _, acc := range accs {
+			if acc.Address.String() == provider.Address {
+				sender = acc
+				found = true
+				break
+			}
 		}
 
-		return simulateSpecificLeaseWithdraw(r, app, ctx, txGen, accs, sk, k, withdrawableLeases)
-	}
-}
-
-// simulateSpecificLeaseWithdraw simulates withdrawal from specific leases.
-func simulateSpecificLeaseWithdraw(
-	r *rand.Rand,
-	app *baseapp.BaseApp,
-	ctx sdk.Context,
-	txGen client.TxConfig,
-	accs []simtypes.Account,
-	sk SKUKeeper,
-	k keeper.Keeper,
-	withdrawableLeases []types.Lease,
-) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-	msgType := sdk.MsgTypeURL(&types.MsgWithdraw{})
-
-	// Pick a random lease with withdrawable amount
-	lease := withdrawableLeases[r.Intn(len(withdrawableLeases))]
-
-	// Get provider to find the provider address
-	provider, err := sk.GetProvider(ctx, lease.ProviderUuid)
-	if err != nil {
-		return simtypes.NoOpMsg(types.ModuleName, msgType, "provider not found"), nil, nil
-	}
-
-	// Find the provider address account
-	var sender simtypes.Account
-	var found bool
-	for _, acc := range accs {
-		if acc.Address.String() == provider.Address {
-			sender = acc
-			found = true
-			break
+		if !found {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "provider account not found in simulation"), nil, nil
 		}
-	}
 
-	if !found {
-		return simtypes.NoOpMsg(types.ModuleName, msgType, "provider account not found in simulation"), nil, nil
-	}
-
-	// Randomly pick 1-3 leases from the same provider
-	var providerLeases []types.Lease
-	for _, l := range withdrawableLeases {
-		if l.ProviderUuid == lease.ProviderUuid {
-			providerLeases = append(providerLeases, l)
+		// Random limit: 0 (use default), or 10-100
+		var limit uint64
+		if r.Intn(2) == 0 {
+			limit = 0 // Use default limit
+		} else {
+			limit = uint64(r.Intn(91)) + 10 //nolint:gosec // r.Intn returns non-negative, result is 10-100
 		}
-	}
 
-	numLeases := r.Intn(3) + 1
-	numLeases = min(numLeases, len(providerLeases))
-
-	// Shuffle and pick
-	r.Shuffle(len(providerLeases), func(i, j int) {
-		providerLeases[i], providerLeases[j] = providerLeases[j], providerLeases[i]
-	})
-
-	leaseUUIDs := make([]string, numLeases)
-	for i := range numLeases {
-		leaseUUIDs[i] = providerLeases[i].Uuid
-	}
-
-	msg := &types.MsgWithdraw{
-		Sender:     sender.Address.String(),
-		LeaseUuids: leaseUUIDs,
-	}
-
-	return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
-}
-
-// simulateProviderWideWithdraw simulates provider-wide withdrawal mode.
-func simulateProviderWideWithdraw(
-	r *rand.Rand,
-	app *baseapp.BaseApp,
-	ctx sdk.Context,
-	txGen client.TxConfig,
-	accs []simtypes.Account,
-	sk SKUKeeper,
-	k keeper.Keeper,
-	withdrawableLeases []types.Lease,
-) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
-	msgType := sdk.MsgTypeURL(&types.MsgWithdraw{})
-
-	// Collect unique provider UUIDs in deterministic insertion order.
-	// A map range would randomise the slice and break simulation determinism.
-	seen := make(map[string]struct{})
-	uuids := make([]string, 0, 4)
-	for _, lease := range withdrawableLeases {
-		if _, ok := seen[lease.ProviderUuid]; !ok {
-			seen[lease.ProviderUuid] = struct{}{}
-			uuids = append(uuids, lease.ProviderUuid)
+		msg := &types.MsgWithdraw{
+			Sender:       sender.Address.String(),
+			ProviderUuid: providerUUID,
+			Limit:        limit,
 		}
+
+		return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
 	}
-
-	if len(uuids) == 0 {
-		return simtypes.NoOpMsg(types.ModuleName, msgType, "no providers with withdrawable leases"), nil, nil
-	}
-
-	providerUUID := uuids[r.Intn(len(uuids))]
-
-	// Get provider to find the provider address
-	provider, err := sk.GetProvider(ctx, providerUUID)
-	if err != nil {
-		return simtypes.NoOpMsg(types.ModuleName, msgType, "provider not found"), nil, nil
-	}
-
-	// Find the provider address account
-	var sender simtypes.Account
-	var found bool
-	for _, acc := range accs {
-		if acc.Address.String() == provider.Address {
-			sender = acc
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		return simtypes.NoOpMsg(types.ModuleName, msgType, "provider account not found in simulation"), nil, nil
-	}
-
-	// Random limit: 0 (use default), or 10-100
-	var limit uint64
-	if r.Intn(2) == 0 {
-		limit = 0 // Use default limit
-	} else {
-		limit = uint64(r.Intn(91)) + 10 //nolint:gosec // r.Intn returns non-negative, result is 10-100
-	}
-
-	msg := &types.MsgWithdraw{
-		Sender:       sender.Address.String(),
-		ProviderUuid: providerUUID,
-		Limit:        limit,
-	}
-
-	return genAndDeliverTxWithRandFees(r, app, ctx, txGen, sender, msg, k)
 }
 
 func newOperationInput(r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, txGen client.TxConfig, simAccount simtypes.Account, msg sdk.Msg, k keeper.Keeper) simulation.OperationInput {

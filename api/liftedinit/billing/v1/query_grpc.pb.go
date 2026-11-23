@@ -28,6 +28,8 @@ const (
 	Query_CreditAddress_FullMethodName        = "/liftedinit.billing.v1.Query/CreditAddress"
 	Query_WithdrawableAmount_FullMethodName   = "/liftedinit.billing.v1.Query/WithdrawableAmount"
 	Query_ProviderWithdrawable_FullMethodName = "/liftedinit.billing.v1.Query/ProviderWithdrawable"
+	Query_StreamsByProvider_FullMethodName    = "/liftedinit.billing.v1.Query/StreamsByProvider"
+	Query_StreamsByTenant_FullMethodName      = "/liftedinit.billing.v1.Query/StreamsByTenant"
 	Query_CreditAccounts_FullMethodName       = "/liftedinit.billing.v1.Query/CreditAccounts"
 	Query_LeasesBySKU_FullMethodName          = "/liftedinit.billing.v1.Query/LeasesBySKU"
 	Query_CreditEstimate_FullMethodName       = "/liftedinit.billing.v1.Query/CreditEstimate"
@@ -52,10 +54,19 @@ type QueryClient interface {
 	CreditAccount(ctx context.Context, in *QueryCreditAccountRequest, opts ...grpc.CallOption) (*QueryCreditAccountResponse, error)
 	// CreditAddress derives the credit address for a tenant.
 	CreditAddress(ctx context.Context, in *QueryCreditAddressRequest, opts ...grpc.CallOption) (*QueryCreditAddressResponse, error)
-	// WithdrawableAmount queries the amount available for provider withdrawal from a lease.
+	// Deprecated: Do not use.
+	// WithdrawableAmount queried the amount available for provider withdrawal from a lease.
+	//
+	// Deprecated: settlement is per stream, so a lease has no withdrawable
+	// amount of its own. The method returns an Unimplemented error; use
+	// ProviderWithdrawable or StreamsByProvider.
 	WithdrawableAmount(ctx context.Context, in *QueryWithdrawableAmountRequest, opts ...grpc.CallOption) (*QueryWithdrawableAmountResponse, error)
-	// ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
+	// ProviderWithdrawable queries the total amount available for a provider to withdraw across its streams.
 	ProviderWithdrawable(ctx context.Context, in *QueryProviderWithdrawableRequest, opts ...grpc.CallOption) (*QueryProviderWithdrawableResponse, error)
+	// StreamsByProvider queries the settlement streams of a provider.
+	StreamsByProvider(ctx context.Context, in *QueryStreamsByProviderRequest, opts ...grpc.CallOption) (*QueryStreamsByProviderResponse, error)
+	// StreamsByTenant queries the settlement streams paid by a tenant.
+	StreamsByTenant(ctx context.Context, in *QueryStreamsByTenantRequest, opts ...grpc.CallOption) (*QueryStreamsByTenantResponse, error)
 	// CreditAccounts queries all credit accounts with pagination.
 	CreditAccounts(ctx context.Context, in *QueryCreditAccountsRequest, opts ...grpc.CallOption) (*QueryCreditAccountsResponse, error)
 	// LeasesBySKU queries leases by SKU UUID.
@@ -138,6 +149,7 @@ func (c *queryClient) CreditAddress(ctx context.Context, in *QueryCreditAddressR
 	return out, nil
 }
 
+// Deprecated: Do not use.
 func (c *queryClient) WithdrawableAmount(ctx context.Context, in *QueryWithdrawableAmountRequest, opts ...grpc.CallOption) (*QueryWithdrawableAmountResponse, error) {
 	out := new(QueryWithdrawableAmountResponse)
 	err := c.cc.Invoke(ctx, Query_WithdrawableAmount_FullMethodName, in, out, opts...)
@@ -150,6 +162,24 @@ func (c *queryClient) WithdrawableAmount(ctx context.Context, in *QueryWithdrawa
 func (c *queryClient) ProviderWithdrawable(ctx context.Context, in *QueryProviderWithdrawableRequest, opts ...grpc.CallOption) (*QueryProviderWithdrawableResponse, error) {
 	out := new(QueryProviderWithdrawableResponse)
 	err := c.cc.Invoke(ctx, Query_ProviderWithdrawable_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) StreamsByProvider(ctx context.Context, in *QueryStreamsByProviderRequest, opts ...grpc.CallOption) (*QueryStreamsByProviderResponse, error) {
+	out := new(QueryStreamsByProviderResponse)
+	err := c.cc.Invoke(ctx, Query_StreamsByProvider_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) StreamsByTenant(ctx context.Context, in *QueryStreamsByTenantRequest, opts ...grpc.CallOption) (*QueryStreamsByTenantResponse, error) {
+	out := new(QueryStreamsByTenantResponse)
+	err := c.cc.Invoke(ctx, Query_StreamsByTenant_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -210,10 +240,19 @@ type QueryServer interface {
 	CreditAccount(context.Context, *QueryCreditAccountRequest) (*QueryCreditAccountResponse, error)
 	// CreditAddress derives the credit address for a tenant.
 	CreditAddress(context.Context, *QueryCreditAddressRequest) (*QueryCreditAddressResponse, error)
-	// WithdrawableAmount queries the amount available for provider withdrawal from a lease.
+	// Deprecated: Do not use.
+	// WithdrawableAmount queried the amount available for provider withdrawal from a lease.
+	//
+	// Deprecated: settlement is per stream, so a lease has no withdrawable
+	// amount of its own. The method returns an Unimplemented error; use
+	// ProviderWithdrawable or StreamsByProvider.
 	WithdrawableAmount(context.Context, *QueryWithdrawableAmountRequest) (*QueryWithdrawableAmountResponse, error)
-	// ProviderWithdrawable queries the total amount available for a provider to withdraw across all leases.
+	// ProviderWithdrawable queries the total amount available for a provider to withdraw across its streams.
 	ProviderWithdrawable(context.Context, *QueryProviderWithdrawableRequest) (*QueryProviderWithdrawableResponse, error)
+	// StreamsByProvider queries the settlement streams of a provider.
+	StreamsByProvider(context.Context, *QueryStreamsByProviderRequest) (*QueryStreamsByProviderResponse, error)
+	// StreamsByTenant queries the settlement streams paid by a tenant.
+	StreamsByTenant(context.Context, *QueryStreamsByTenantRequest) (*QueryStreamsByTenantResponse, error)
 	// CreditAccounts queries all credit accounts with pagination.
 	CreditAccounts(context.Context, *QueryCreditAccountsRequest) (*QueryCreditAccountsResponse, error)
 	// LeasesBySKU queries leases by SKU UUID.
@@ -256,6 +295,12 @@ func (UnimplementedQueryServer) WithdrawableAmount(context.Context, *QueryWithdr
 }
 func (UnimplementedQueryServer) ProviderWithdrawable(context.Context, *QueryProviderWithdrawableRequest) (*QueryProviderWithdrawableResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProviderWithdrawable not implemented")
+}
+func (UnimplementedQueryServer) StreamsByProvider(context.Context, *QueryStreamsByProviderRequest) (*QueryStreamsByProviderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StreamsByProvider not implemented")
+}
+func (UnimplementedQueryServer) StreamsByTenant(context.Context, *QueryStreamsByTenantRequest) (*QueryStreamsByTenantResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method StreamsByTenant not implemented")
 }
 func (UnimplementedQueryServer) CreditAccounts(context.Context, *QueryCreditAccountsRequest) (*QueryCreditAccountsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreditAccounts not implemented")
@@ -444,6 +489,42 @@ func _Query_ProviderWithdrawable_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_StreamsByProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryStreamsByProviderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).StreamsByProvider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_StreamsByProvider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).StreamsByProvider(ctx, req.(*QueryStreamsByProviderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_StreamsByTenant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryStreamsByTenantRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).StreamsByTenant(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Query_StreamsByTenant_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).StreamsByTenant(ctx, req.(*QueryStreamsByTenantRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Query_CreditAccounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(QueryCreditAccountsRequest)
 	if err := dec(in); err != nil {
@@ -558,6 +639,14 @@ var Query_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProviderWithdrawable",
 			Handler:    _Query_ProviderWithdrawable_Handler,
+		},
+		{
+			MethodName: "StreamsByProvider",
+			Handler:    _Query_StreamsByProvider_Handler,
+		},
+		{
+			MethodName: "StreamsByTenant",
+			Handler:    _Query_StreamsByTenant_Handler,
 		},
 		{
 			MethodName: "CreditAccounts",

@@ -2,11 +2,14 @@ package helpers
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	sdkmath "cosmossdk.io/math"
+	abci "github.com/cometbft/cometbft/abci/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/strangelove-ventures/interchaintest/v8/chain/cosmos"
 	"github.com/strangelove-ventures/interchaintest/v8/ibc"
@@ -35,7 +38,6 @@ type LeaseJSON struct {
 	State           string          `json:"state,omitempty"`
 	CreatedAt       time.Time       `json:"created_at"`
 	ClosedAt        *time.Time      `json:"closed_at,omitempty"`
-	LastSettledAt   time.Time       `json:"last_settled_at"`
 	AcknowledgedAt  *time.Time      `json:"acknowledged_at,omitempty"`
 	RejectedAt      *time.Time      `json:"rejected_at,omitempty"`
 	RejectionReason string          `json:"rejection_reason,omitempty"`
@@ -65,6 +67,105 @@ func (l *LeaseJSON) GetState() billingtypes.LeaseState {
 // GetClosureReason returns the closure reason for the lease.
 func (l *LeaseJSON) GetClosureReason() string {
 	return l.ClosureReason
+}
+
+// StreamStateJSON is a JSON-compatible version of StreamState: the settlement
+// aggregate of one (provider_uuid, tenant, denom) stream.
+type StreamStateJSON struct {
+	// Rate is the summed per-second rate of the stream's ACTIVE leases.
+	Rate sdkmath.Int `json:"rate"`
+	// LastSettledAt is the time up to which the stream's accrual has been
+	// settled: the exact time of the block that last settled it.
+	LastSettledAt time.Time `json:"last_settled_at"`
+	// LeaseCount is the number of ACTIVE leases contributing to Rate.
+	LeaseCount uint64 `json:"lease_count,omitempty,string"`
+	// ExhaustedAt is set once a settlement found the tenant's credit exhausted;
+	// the EndBlocker then closes the stream's leases.
+	ExhaustedAt *time.Time `json:"exhausted_at,omitempty"`
+	// Remainder is the accrual that did not amount to a whole unit of the denom
+	// at the last settlement, in denom units × nanoseconds. It is always less
+	// than NanosPerSecond and is carried to the next settlement.
+	Remainder sdkmath.Int `json:"remainder"`
+	// Arrears is an amount, in whole units of the denom, that the stream owes
+	// on top of its accrual. The next settlement pays it and clears it.
+	Arrears sdkmath.Int `json:"arrears"`
+}
+
+// NanosPerSecond is the scale of StreamStateJSON.Remainder: rates are per
+// second and time is tracked to the nanosecond.
+const NanosPerSecond = int64(time.Second)
+
+// IsExhausted reports whether the stream is frozen for exhausted credit.
+func (s StreamStateJSON) IsExhausted() bool {
+	return s.ExhaustedAt != nil
+}
+
+// AccrualAt returns what settling the stream at the block time now pays, and
+// the remainder the settlement leaves, ignoring the tenant's credit balance:
+//
+//	total     = remainder + rate × (now − last_settled_at, in nanoseconds)
+//	paid      = total / 1e9
+//	remainder = total % 1e9
+//
+// A frozen stream, or one last settled at or after now, accrues nothing.
+func (s StreamStateJSON) AccrualAt(now time.Time) (paid, remainder sdkmath.Int) {
+	remainder = s.Remainder
+	if remainder.IsNil() {
+		remainder = sdkmath.ZeroInt()
+	}
+	elapsed := now.Sub(s.LastSettledAt)
+	if s.IsExhausted() || elapsed <= 0 {
+		return sdkmath.ZeroInt(), remainder
+	}
+	total := s.Rate.MulRaw(int64(elapsed)).Add(remainder)
+	return total.QuoRaw(NanosPerSecond), total.ModRaw(NanosPerSecond)
+}
+
+// DueAt returns what settling the stream at the block time now pays, ignoring
+// the tenant's credit balance: its accrual (see AccrualAt) plus its arrears.
+// A frozen stream owes nothing.
+func (s StreamStateJSON) DueAt(now time.Time) (paid, remainder sdkmath.Int) {
+	paid, remainder = s.AccrualAt(now)
+	if s.IsExhausted() || s.Arrears.IsNil() {
+		return paid, remainder
+	}
+	return paid.Add(s.Arrears), remainder
+}
+
+// StreamJSON is a JSON-compatible version of Stream, the shape returned by the
+// streams-by-provider and streams-by-tenant queries.
+type StreamJSON struct {
+	ProviderUuid string          `json:"provider_uuid,omitempty"`
+	Tenant       string          `json:"tenant,omitempty"`
+	Denom        string          `json:"denom,omitempty"`
+	State        StreamStateJSON `json:"state"`
+}
+
+// StreamsResponseJSON wraps the stream queries, which include pagination.
+// PageResponseJSON is used for the same reason as in the lease queries.
+type StreamsResponseJSON struct {
+	Streams    []StreamJSON      `json:"streams"`
+	Pagination *PageResponseJSON `json:"pagination,omitempty"`
+}
+
+// GetNextKeyString returns the base64-encoded next key for CLI pagination.
+func (r *StreamsResponseJSON) GetNextKeyString() string {
+	if r.Pagination != nil {
+		return r.Pagination.NextKey
+	}
+	return ""
+}
+
+// Find returns the stream of (providerUUID, tenant, denom), or nil when the
+// response does not contain it.
+func (r *StreamsResponseJSON) Find(providerUUID, tenant, denom string) *StreamJSON {
+	for i := range r.Streams {
+		s := &r.Streams[i]
+		if s.ProviderUuid == providerUUID && s.Tenant == tenant && s.Denom == denom {
+			return s
+		}
+	}
+	return nil
 }
 
 // Billing transaction helpers
@@ -219,20 +320,34 @@ func BillingCreateAndAcknowledgeLease(ctx context.Context, chain *cosmos.CosmosC
 	return leaseUUID, nil
 }
 
-// BillingWithdraw withdraws accrued funds from a specific lease.
-func BillingWithdraw(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseID string, flags ...string) (sdk.TxResponse, error) {
-	cmd := []string{"tx", "billing", "withdraw", leaseID}
-	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+// BillingWithdrawByProvider settles a provider's streams and pays what they
+// accrued to the provider's payout address. This is the only withdrawal mode:
+// settlement is per (provider, tenant, denom) stream, so a single lease can no
+// longer be withdrawn on its own.
+// limit counts streams, not leases; limit=0 uses the default limit (50).
+func BillingWithdrawByProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, providerUUID string, limit uint64, flags ...string) (sdk.TxResponse, error) {
+	return BillingWithdrawByProviderPaginated(ctx, chain, user, providerUUID, limit, "", flags...)
 }
 
-// BillingWithdrawByProvider withdraws all accrued funds from all leases for a provider.
-// Uses the --provider flag for provider-wide withdrawal mode.
-// limit=0 uses the default limit (50).
-func BillingWithdrawByProvider(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, providerUUID string, limit uint64, flags ...string) (sdk.TxResponse, error) {
+// BillingWithdrawByProviderPaginated is BillingWithdrawByProvider resuming
+// after key, the base64 next_key of the previous withdraw response. An empty
+// key starts from the provider's first stream.
+func BillingWithdrawByProviderPaginated(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, providerUUID string, limit uint64, key string, flags ...string) (sdk.TxResponse, error) {
 	cmd := []string{"tx", "billing", "withdraw", "--provider", providerUUID}
 	if limit > 0 {
 		cmd = append(cmd, "--limit", strconv.FormatUint(limit, 10))
 	}
+	if key != "" {
+		cmd = append(cmd, "--key", key)
+	}
+	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
+}
+
+// BillingWithdrawLeasesLegacy invokes the removed lease mode of the withdraw
+// command (`withdraw <lease-uuid>...`). The CLI rejects it before broadcasting,
+// so this only exists to assert that rejection.
+func BillingWithdrawLeasesLegacy(ctx context.Context, chain *cosmos.CosmosChain, user ibc.Wallet, leaseUUIDs []string, flags ...string) (sdk.TxResponse, error) {
+	cmd := append([]string{"tx", "billing", "withdraw"}, leaseUUIDs...)
 	return ExecuteTransaction(ctx, chain, TxCommandBuilder(ctx, chain, cmd, user.KeyName(), flags...))
 }
 
@@ -441,21 +556,77 @@ func BillingQueryCreditAddress(ctx context.Context, chain *cosmos.CosmosChain, t
 	return &res, nil
 }
 
-// BillingQueryWithdrawable queries the withdrawable amount for a lease.
-func BillingQueryWithdrawable(ctx context.Context, chain *cosmos.CosmosChain, leaseUUID string) (*billingtypes.QueryWithdrawableAmountResponse, error) {
-	var res billingtypes.QueryWithdrawableAmountResponse
-	cmd := []string{"query", "billing", "withdrawable", leaseUUID}
+// BillingQueryStreamsByProvider queries the settlement streams of a provider:
+// one per (tenant, denom) with at least one ACTIVE lease.
+func BillingQueryStreamsByProvider(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string) (*StreamsResponseJSON, error) {
+	var res StreamsResponseJSON
+	cmd := []string{"query", "billing", "streams-by-provider", providerUUID}
 	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
 }
 
-// ProviderWithdrawableResponseJSON wraps the provider-withdrawable query. It now
+// BillingQueryStreamsByProviderPaginated queries a provider's streams with
+// pagination. key is the base64 next_key exactly as the previous page printed
+// it: stream keys hold raw address bytes, so the stream queries decode
+// --page-key from base64 instead of taking it as raw bytes.
+func BillingQueryStreamsByProviderPaginated(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string, limit uint64, key string) (*StreamsResponseJSON, string, error) {
+	var res StreamsResponseJSON
+	cmd := []string{"query", "billing", "streams-by-provider", providerUUID, "--limit", strconv.FormatUint(limit, 10)}
+	if key != "" {
+		cmd = append(cmd, "--page-key", key)
+	}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, "", err
+	}
+	return &res, res.GetNextKeyString(), nil
+}
+
+// BillingQueryStreamsByTenant queries the settlement streams paid by a tenant:
+// one per (provider, denom) the tenant has at least one ACTIVE lease with.
+func BillingQueryStreamsByTenant(ctx context.Context, chain *cosmos.CosmosChain, tenant string) (*StreamsResponseJSON, error) {
+	var res StreamsResponseJSON
+	cmd := []string{"query", "billing", "streams-by-tenant", tenant}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// BillingQueryStreamsByTenantPaginated queries a tenant's streams with
+// pagination. key is the base64 next_key of the previous page, as printed.
+func BillingQueryStreamsByTenantPaginated(ctx context.Context, chain *cosmos.CosmosChain, tenant string, limit uint64, key string) (*StreamsResponseJSON, string, error) {
+	var res StreamsResponseJSON
+	cmd := []string{"query", "billing", "streams-by-tenant", tenant, "--limit", strconv.FormatUint(limit, 10)}
+	if key != "" {
+		cmd = append(cmd, "--page-key", key)
+	}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, "", err
+	}
+	return &res, res.GetNextKeyString(), nil
+}
+
+// BillingQueryStream returns the stream of (providerUUID, tenant, denom), or
+// nil when it does not exist (the tenant has no ACTIVE lease with the provider
+// in that denom).
+func BillingQueryStream(ctx context.Context, chain *cosmos.CosmosChain, providerUUID, tenant, denom string) (*StreamJSON, error) {
+	res, err := BillingQueryStreamsByTenant(ctx, chain, tenant)
+	if err != nil {
+		return nil, err
+	}
+	return res.Find(providerUUID, tenant, denom), nil
+}
+
+// ProviderWithdrawableResponseJSON wraps the provider-withdrawable query. It
 // returns a pagination block whose uint64 `total` is emitted as a JSON string by
 // proto3 JSON; the SDK's query.PageResponse (no `,string` tag) cannot unmarshal
 // that via encoding/json, so we use PageResponseJSON here (same reason the leases
 // and credit-account paginated helpers do).
+//
+// The query sums over the provider's streams: LeaseCount is the number of
+// leases covered by streams with a non-zero withdrawable amount.
 type ProviderWithdrawableResponseJSON struct {
 	Amounts    sdk.Coins         `json:"amounts"`
 	LeaseCount uint64            `json:"lease_count,omitempty,string"`
@@ -470,6 +641,25 @@ func BillingQueryProviderWithdrawable(ctx context.Context, chain *cosmos.CosmosC
 		return nil, err
 	}
 	return &res, nil
+}
+
+// BillingQueryProviderWithdrawablePaginated queries one page of a provider's
+// withdrawable amount, paginated over its streams. key is the base64 next_key
+// of the previous page, as printed.
+func BillingQueryProviderWithdrawablePaginated(ctx context.Context, chain *cosmos.CosmosChain, providerUUID string, limit uint64, key string) (*ProviderWithdrawableResponseJSON, string, error) {
+	var res ProviderWithdrawableResponseJSON
+	cmd := []string{"query", "billing", "provider-withdrawable", providerUUID, "--limit", strconv.FormatUint(limit, 10)}
+	if key != "" {
+		cmd = append(cmd, "--page-key", key)
+	}
+	if err := executeQueryWithError(ctx, chain, cmd, &res); err != nil {
+		return nil, "", err
+	}
+	nextKey := ""
+	if res.Pagination != nil {
+		nextKey = res.Pagination.NextKey
+	}
+	return &res, nextKey, nil
 }
 
 // CreditAccountsResponseJSON wraps credit accounts query that includes pagination.
@@ -545,6 +735,100 @@ func BillingQueryCreditEstimate(ctx context.Context, chain *cosmos.CosmosChain, 
 }
 
 // Event extraction helpers
+
+// EventAttributes holds the attributes of one emitted event, by key.
+type EventAttributes map[string]string
+
+// FilterEvents returns the attributes of every event of eventType, in emission
+// order.
+func FilterEvents(events []abci.Event, eventType string) []EventAttributes {
+	var matches []EventAttributes
+	for _, event := range events {
+		if event.Type != eventType {
+			continue
+		}
+		attrs := make(EventAttributes, len(event.Attributes))
+		for _, attr := range event.Attributes {
+			attrs[attr.Key] = attr.Value
+		}
+		matches = append(matches, attrs)
+	}
+	return matches
+}
+
+// FindEvent returns the first event of eventType whose attribute key equals
+// value, and whether one was found.
+func FindEvent(events []abci.Event, eventType, key, value string) (EventAttributes, bool) {
+	for _, attrs := range FilterEvents(events, eventType) {
+		if attrs[key] == value {
+			return attrs, true
+		}
+	}
+	return nil, false
+}
+
+// BlockInfo is what the billing tests need to know about a committed block.
+type BlockInfo struct {
+	// Time is the block header time: the time every transaction and the
+	// EndBlocker of that block settle and close leases at.
+	Time time.Time
+	// Events are the events emitted outside of transactions (BeginBlock and
+	// EndBlock). The EndBlocker's lease_auto_closed events are found here, not in
+	// the events of the withdraw transaction that froze the stream.
+	Events []abci.Event
+}
+
+// GetBlockInfo returns the header time and the non-transaction events of the
+// block at height.
+func GetBlockInfo(ctx context.Context, chain *cosmos.CosmosChain, height int64) (*BlockInfo, error) {
+	client := chain.GetNode().Client
+	block, err := client.Block(ctx, &height)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block %d: %w", height, err)
+	}
+	results, err := client.BlockResults(ctx, &height)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get block results %d: %w", height, err)
+	}
+	return &BlockInfo{Time: block.Block.Time, Events: results.FinalizeBlockEvents}, nil
+}
+
+// GetWithdrawResponse decodes the MsgWithdrawResponse of a committed withdraw
+// transaction from its result data. has_more and next_key are only available
+// there: the batch_withdraw event does not carry the pagination cursor.
+func GetWithdrawResponse(txRes *sdk.TxResponse) (*billingtypes.MsgWithdrawResponse, error) {
+	bz, err := hex.DecodeString(txRes.Data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode tx %s data: %w", txRes.TxHash, err)
+	}
+
+	var msgData sdk.TxMsgData
+	if err := msgData.Unmarshal(bz); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal tx %s data: %w", txRes.TxHash, err)
+	}
+
+	wantTypeURL := sdk.MsgTypeURL(&billingtypes.MsgWithdrawResponse{})
+	for _, msgResponse := range msgData.MsgResponses {
+		if msgResponse.TypeUrl != wantTypeURL {
+			continue
+		}
+		var res billingtypes.MsgWithdrawResponse
+		if err := res.Unmarshal(msgResponse.Value); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal withdraw response of tx %s: %w", txRes.TxHash, err)
+		}
+		return &res, nil
+	}
+	return nil, fmt.Errorf("no %s in tx %s (code %d): %s", wantTypeURL, txRes.TxHash, txRes.Code, txRes.RawLog)
+}
+
+// GetLatestBlockTime returns the header time of the latest committed block.
+func GetLatestBlockTime(ctx context.Context, chain *cosmos.CosmosChain) (time.Time, error) {
+	block, err := chain.GetNode().Client.Block(ctx, nil)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to get latest block: %w", err)
+	}
+	return block.Block.Time, nil
+}
 
 // GetLeaseIDFromTxHash queries a transaction and extracts the lease UUID from it.
 func GetLeaseIDFromTxHash(_ context.Context, chain *cosmos.CosmosChain, txHash string) (string, error) {

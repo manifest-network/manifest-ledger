@@ -20,9 +20,11 @@ This repo uses a single generic upgrade handler — [`app/upgrades/next/upgrades
 Upgrades = append(Upgrades, next.NewUpgrade(app.Version()))
 ```
 
-The handler runs the registered module migrations. Its name is the binary's version string. The Makefile currently defaults `VERSION` to `v2.3.1`; it uses `git describe` only when `VERSION` is explicitly empty. Build each release with `make build VERSION=<upgrade-name>` and verify `manifestd version`; checking out a tag alone does not override the Makefile default. Confirm `plan.name` equals the published upgrade handler name byte-for-byte.
+The handler runs the registered module migrations. Its name is the binary's version string. The Makefile currently defaults `VERSION` to `v2.5.0`; it uses `git describe` only when `VERSION` is explicitly empty. Build each release with `make build VERSION=<upgrade-name>` and verify `manifestd version`; checking out a tag alone does not override the Makefile default. Confirm `plan.name` equals the published upgrade handler name byte-for-byte.
 
 > If a future release needs a non-trivial migration (state surgery, store renames, etc.), the team will replace the noop body in `app/upgrades/next/upgrades.go` for that release. Read the release notes carefully — a non-noop release may set `StoreUpgrades` and require operators to recompute disk-resident state.
+
+> `v2.5.0` is the first release whose registered module migrations are not a no-op: `x/billing` goes from consensus version 2 to 3 and its migration moves funds (it pays what every lease accrued up to the upgrade block and replaces per-lease settlement with settlement streams). The handler itself is unchanged and no `StoreUpgrades` are needed. See [`x/billing/docs/MIGRATION.md`](../../x/billing/docs/MIGRATION.md) for what the migration does and how it fails.
 
 ## cosmovisor (recommended)
 
@@ -204,7 +206,7 @@ Prepare the copied home before running the command:
 1. Use a fork base whose state transitions match the source binary. Changes on
    `main` are not automatically compatible with a released source chain. Choose
    the build version for the rehearsal mode below and verify
-   `build/manifestd version`. The source baseline for this work is `v2.3.1`;
+   `build/manifestd version`. The source baseline for this work is `v2.4.0`;
    recheck the source's last completed upgrade and any pending plan before each
    rehearsal. Merely setting the version does not establish state compatibility.
    A bare `go build` omits the required version ldflags.
@@ -524,7 +526,7 @@ make ictest-in-place-testnet
 
 The fork tests exercise vote extensions, rejected isolation inputs, committed
 state, and ordinary restart. The released-source scenario seeds synthetic state
-with the published v2.3.1 image, includes Wasm code, schedules an upgrade, observes
+with the published v2.4.0 image, includes Wasm code, schedules an upgrade, observes
 the halt, and swaps to a distinct target image. That image alone enables the
 `testnet_upgrade_fixture` build tag: its handler performs a measurable test-only
 parameter migration, checked again after restart to catch repeat execution.

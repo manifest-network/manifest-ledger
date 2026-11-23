@@ -749,18 +749,10 @@ func TestMsgWithdraw_ValidateBasic(t *testing.T) {
 		errMsg    string
 	}{
 		{
-			name: "valid message",
-			msg: types.MsgWithdraw{
-				Sender:     sender,
-				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
-			},
-			expectErr: false,
-		},
-		{
 			name: "invalid sender address",
 			msg: types.MsgWithdraw{
-				Sender:     invalidAddr,
-				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
+				Sender:       invalidAddr,
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
@@ -768,30 +760,40 @@ func TestMsgWithdraw_ValidateBasic(t *testing.T) {
 		{
 			name: "empty sender address",
 			msg: types.MsgWithdraw{
-				Sender:     "",
-				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
+				Sender:       "",
+				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: true,
 			errMsg:    "invalid sender address",
 		},
 		{
-			name: "neither mode specified",
+			name: "provider_uuid missing",
 			msg: types.MsgWithdraw{
-				Sender:     sender,
-				LeaseUuids: []string{},
+				Sender: sender,
 			},
 			expectErr: true,
-			errMsg:    "must specify either lease_uuids or provider_uuid",
+			errMsg:    "provider_uuid is required",
 		},
 		{
-			name: "both modes specified",
+			// lease_uuids is deprecated (ADR-044): the field still decodes, and
+			// the node rejects it with an error naming the replacement.
+			name: "deprecated lease_uuids rejected",
+			msg: types.MsgWithdraw{
+				Sender:     sender,
+				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"}, //nolint:staticcheck // exercising the deprecated field
+			},
+			expectErr: true,
+			errMsg:    "lease_uuids is no longer supported",
+		},
+		{
+			name: "deprecated lease_uuids rejected even with provider_uuid",
 			msg: types.MsgWithdraw{
 				Sender:       sender,
-				LeaseUuids:   []string{"01912345-6789-7abc-8def-0123456789ab"},
+				LeaseUuids:   []string{"01912345-6789-7abc-8def-0123456789ab"}, //nolint:staticcheck // exercising the deprecated field
 				ProviderUuid: "01912345-6789-7abc-8def-0123456789ab",
 			},
 			expectErr: true,
-			errMsg:    "cannot specify both lease_uuids and provider_uuid",
+			errMsg:    "use provider_uuid",
 		},
 		{
 			name: "valid provider mode",
@@ -865,16 +867,6 @@ func TestMsgWithdraw_ValidateBasic(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "key length",
-		},
-		{
-			name: "lease mode with cursor key rejected",
-			msg: types.MsgWithdraw{
-				Sender:     sender,
-				LeaseUuids: []string{"01912345-6789-7abc-8def-0123456789ab"},
-				Key:        []byte("01912345-6789-7abc-8def-0123456789ac"),
-			},
-			expectErr: true,
-			errMsg:    "only valid in provider-wide mode",
 		},
 	}
 
@@ -1082,9 +1074,8 @@ func TestGenesisState_NewGenesisState(t *testing.T) {
 			Items: []types.LeaseItem{
 				{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 			},
-			State:         types.LEASE_STATE_ACTIVE,
-			CreatedAt:     now,
-			LastSettledAt: now,
+			State:     types.LEASE_STATE_ACTIVE,
+			CreatedAt: now,
 		},
 	}
 
@@ -1122,9 +1113,8 @@ func TestGenesisState_Validate(t *testing.T) {
 		Items: []types.LeaseItem{
 			{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 		},
-		State:         types.LEASE_STATE_ACTIVE,
-		CreatedAt:     now,
-		LastSettledAt: now,
+		State:     types.LEASE_STATE_ACTIVE,
+		CreatedAt: now,
 	}
 
 	// Calculate expected reservation for validLease: locked_price * quantity * min_lease_duration
@@ -1136,6 +1126,19 @@ func TestGenesisState_Validate(t *testing.T) {
 		CreditAddress:    creditAddr.String(),
 		ActiveLeaseCount: 1,                     // validLease is ACTIVE
 		ReservedAmounts:  validLeaseReservation, // Must match sum of active/pending lease reservations
+	}
+
+	// The stream validLease implies: its provider, tenant and denom, at its rate.
+	validStream := types.Stream{
+		ProviderUuid: validLease.ProviderUuid,
+		Tenant:       tenant,
+		Denom:        testDenom,
+		State:        types.StreamState{Rate: math.NewInt(100), LastSettledAt: now, LeaseCount: 1},
+	}
+	withStream := func(mutate func(s *types.Stream)) []types.Stream {
+		s := validStream
+		mutate(&s)
+		return []types.Stream{s}
 	}
 
 	tests := []struct {
@@ -1156,8 +1159,192 @@ func TestGenesisState_Validate(t *testing.T) {
 				Leases:         []types.Lease{validLease},
 				CreditAccounts: []types.CreditAccount{validCreditAccount},
 				LeaseSequence:  1,
+				Streams:        []types.Stream{validStream},
 			},
 			expectErr: false,
+		},
+		{
+			name: "active lease without its stream",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+			},
+			expectErr: true,
+			errMsg:    "it is missing",
+		},
+		{
+			name: "stream without an active lease",
+			genesis: &types.GenesisState{
+				Params:  types.DefaultParams(),
+				Streams: []types.Stream{validStream},
+			},
+			expectErr: true,
+			errMsg:    "has no active lease",
+		},
+		{
+			name: "stream for another denom than the lease is priced in",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.Denom = "uother" }),
+			},
+			expectErr: true,
+			errMsg:    "has no active lease",
+		},
+		{
+			name: "stream rate does not match its leases",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.Rate = math.NewInt(99) }),
+			},
+			expectErr: true,
+			errMsg:    "its active leases sum to 100",
+		},
+		{
+			name: "stream lease_count does not match its leases",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.LeaseCount = 2 }),
+			},
+			expectErr: true,
+			errMsg:    "lease_count 2",
+		},
+		{
+			name: "stream with zero rate",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.Rate = math.ZeroInt() }),
+			},
+			expectErr: true,
+			errMsg:    "non-positive rate",
+		},
+		{
+			name: "stream without last_settled_at",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.LastSettledAt = time.Time{} }),
+			},
+			expectErr: true,
+			errMsg:    "no last_settled_at",
+		},
+		{
+			// The remainder is the accrual below one unit (1e9) carried to the
+			// next settlement.
+			name: "stream remainder just below one unit",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.Remainder = math.NewInt(999_999_999) }),
+			},
+			expectErr: false,
+		},
+		{
+			name: "stream remainder of a whole unit",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.Remainder = math.NewInt(1_000_000_000) }),
+			},
+			expectErr: true,
+			errMsg:    "remainder 1000000000 outside [0, 1000000000)",
+		},
+		{
+			// Arrears are an amount owed on top of the accrual, of any size.
+			name: "stream with arrears",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.Arrears = math.NewInt(5_000_000_000) }),
+			},
+			expectErr: false,
+		},
+		{
+			name: "stream with negative arrears",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.Arrears = math.NewInt(-1) }),
+			},
+			expectErr: true,
+			errMsg:    "negative arrears -1",
+		},
+		{
+			name: "stream with negative remainder",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.State.Remainder = math.NewInt(-1) }),
+			},
+			expectErr: true,
+			errMsg:    "remainder -1 outside [0, 1000000000)",
+		},
+		{
+			name: "stream with invalid tenant",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        withStream(func(s *types.Stream) { s.Tenant = invalidAddr }),
+			},
+			expectErr: true,
+			errMsg:    "invalid tenant address",
+		},
+		{
+			name: "duplicate stream",
+			genesis: &types.GenesisState{
+				Params:         types.DefaultParams(),
+				Leases:         []types.Lease{validLease},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        []types.Stream{validStream, validStream},
+			},
+			expectErr: true,
+			errMsg:    "duplicate stream",
+		},
+		{
+			// A genesis exported before stream settlement carries the
+			// deprecated per-lease field and no streams; it cannot be imported.
+			name: "lease with deprecated last_settled_at",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Leases: []types.Lease{func() types.Lease {
+					l := validLease
+					l.LastSettledAt = &now //nolint:staticcheck // exercising the deprecated field
+					return l
+				}()},
+				CreditAccounts: []types.CreditAccount{validCreditAccount},
+				LeaseSequence:  1,
+				Streams:        []types.Stream{validStream},
+			},
+			expectErr: true,
+			errMsg:    "last_settled_at set",
 		},
 		{
 			name: "invalid params - zero max leases",
@@ -1180,9 +1367,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 			},
@@ -1201,9 +1387,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 			},
@@ -1222,9 +1407,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 			},
@@ -1243,9 +1427,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 			},
@@ -1258,13 +1441,12 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
-						Tenant:        tenant,
-						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
-						Items:         []types.LeaseItem{},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items:        []types.LeaseItem{},
+						State:        types.LEASE_STATE_ACTIVE,
+						CreatedAt:    now,
 					},
 				},
 			},
@@ -1283,9 +1465,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 			},
@@ -1304,9 +1485,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 0, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 			},
@@ -1325,9 +1505,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 			},
@@ -1346,9 +1525,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.ZeroInt())},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 			},
@@ -1367,9 +1545,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.Coin{Denom: testDenom, Amount: math.NewInt(-100)}},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 			},
@@ -1388,9 +1565,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_UNSPECIFIED,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_UNSPECIFIED,
+						CreatedAt: now,
 					},
 				},
 			},
@@ -1409,10 +1585,9 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_CLOSED,
-						CreatedAt:     now,
-						LastSettledAt: now,
-						ClosedAt:      nil,
+						State:     types.LEASE_STATE_CLOSED,
+						CreatedAt: now,
+						ClosedAt:  nil,
 					},
 				},
 			},
@@ -1431,10 +1606,9 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_CLOSED,
-						CreatedAt:     now,
-						LastSettledAt: now,
-						ClosedAt:      &closedAt,
+						State:     types.LEASE_STATE_CLOSED,
+						CreatedAt: now,
+						ClosedAt:  &closedAt,
 					},
 				},
 				LeaseSequence: 1,
@@ -1453,10 +1627,9 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
-						MetaHash:      make([]byte, types.MaxMetaHashLength+1), // 65 bytes - too long
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
+						MetaHash:  make([]byte, types.MaxMetaHashLength+1), // 65 bytes - too long
 					},
 				},
 			},
@@ -1587,14 +1760,13 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
-						Tenant:        tenant,
-						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
-						Items:         []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
-						State:         types.LEASE_STATE_CLOSED, // Closed - no reservation
-						CreatedAt:     now,
-						LastSettledAt: now,
-						ClosedAt:      &closedAt,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items:        []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
+						State:        types.LEASE_STATE_CLOSED, // Closed - no reservation
+						CreatedAt:    now,
+						ClosedAt:     &closedAt,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{
@@ -1614,13 +1786,12 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
-						Tenant:        tenant,
-						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
-						Items:         []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
-						State:         types.LEASE_STATE_PENDING, // Pending - needs reservation
-						CreatedAt:     now,
-						LastSettledAt: now,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items:        []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
+						State:        types.LEASE_STATE_PENDING, // Pending - needs reservation
+						CreatedAt:    now,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{
@@ -1640,22 +1811,20 @@ func TestGenesisState_Validate(t *testing.T) {
 				Params: types.DefaultParams(),
 				Leases: []types.Lease{
 					{
-						Uuid:          "01912345-6789-7abc-8def-0123456789ab",
-						Tenant:        tenant,
-						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
-						Items:         []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items:        []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
+						State:        types.LEASE_STATE_ACTIVE,
+						CreatedAt:    now,
 					},
 					{
-						Uuid:          "01912345-6789-7abc-8def-0123456789ae",
-						Tenant:        tenant,
-						ProviderUuid:  "01912345-6789-7abc-8def-0123456789ac",
-						Items:         []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 2, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(50))}},
-						State:         types.LEASE_STATE_PENDING,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						Uuid:         "01912345-6789-7abc-8def-0123456789ae",
+						Tenant:       tenant,
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Items:        []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 2, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(50))}},
+						State:        types.LEASE_STATE_PENDING,
+						CreatedAt:    now,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{
@@ -1671,6 +1840,8 @@ func TestGenesisState_Validate(t *testing.T) {
 					},
 				},
 				LeaseSequence: 2,
+				// Only the ACTIVE lease forms a stream; the PENDING one does not.
+				Streams: []types.Stream{validStream},
 			},
 			expectErr: false,
 		},
@@ -1686,7 +1857,6 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items:                      []types.LeaseItem{{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))}},
 						State:                      types.LEASE_STATE_ACTIVE,
 						CreatedAt:                  now,
-						LastSettledAt:              now,
 						MinLeaseDurationAtCreation: 7200, // Was 7200 at creation, not 3600
 					},
 				},
@@ -1700,6 +1870,7 @@ func TestGenesisState_Validate(t *testing.T) {
 					},
 				},
 				LeaseSequence: 1,
+				Streams:       []types.Stream{validStream},
 			},
 			expectErr: false,
 		},
@@ -1772,9 +1943,8 @@ func TestGenesisState_Validate(t *testing.T) {
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "web"},
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "db"},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{
@@ -1787,6 +1957,8 @@ func TestGenesisState_Validate(t *testing.T) {
 					},
 				},
 				LeaseSequence: 1,
+				// Both items are priced in the same denom: one stream at their summed rate.
+				Streams: withStream(func(s *types.Stream) { s.State.Rate = math.NewInt(200) }),
 			},
 			expectErr: false,
 		},
@@ -1803,9 +1975,8 @@ func TestGenesisState_Validate(t *testing.T) {
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "web"},
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{validCreditAccount},
@@ -1826,9 +1997,8 @@ func TestGenesisState_Validate(t *testing.T) {
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "web"},
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ae", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "web"},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{validCreditAccount},
@@ -1848,9 +2018,8 @@ func TestGenesisState_Validate(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100)), ServiceName: "INVALID"},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{validCreditAccount},
@@ -1871,9 +2040,8 @@ func TestGenesisState_Validate(t *testing.T) {
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 2, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{validCreditAccount},
@@ -1915,9 +2083,8 @@ func TestGenesisState_Validate_MultipleMissingCreditAccounts(t *testing.T) {
 			Items: []types.LeaseItem{
 				{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 			},
-			State:         types.LEASE_STATE_ACTIVE,
-			CreatedAt:     now,
-			LastSettledAt: now,
+			State:     types.LEASE_STATE_ACTIVE,
+			CreatedAt: now,
 		}
 	}
 
@@ -1979,9 +2146,8 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     past,
-						LastSettledAt: past,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: past,
 					},
 				},
 				CreditAccounts: []types.CreditAccount{
@@ -1992,26 +2158,56 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name: "invalid - last_settled_at in the future",
+			// A stream settled in the future would accrue nothing until block
+			// time catches up.
+			name: "invalid - stream last_settled_at in the future",
 			genesis: &types.GenesisState{
 				Params: types.DefaultParams(),
-				Leases: []types.Lease{
+				Streams: []types.Stream{
 					{
-						Uuid:         "01912345-6789-7abc-8def-0123456789ab",
-						Tenant:       tenant,
 						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
-						Items: []types.LeaseItem{
-							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
-						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     past,
-						LastSettledAt: future,
+						Tenant:       tenant,
+						Denom:        testDenom,
+						State:        types.StreamState{Rate: math.NewInt(100), LastSettledAt: future, LeaseCount: 1},
 					},
 				},
 			},
 			blockTime: now,
 			expectErr: true,
 			errMsg:    "last_settled_at",
+		},
+		{
+			name: "invalid - stream exhausted_at in the future",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Streams: []types.Stream{
+					{
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Tenant:       tenant,
+						Denom:        testDenom,
+						State:        types.StreamState{Rate: math.NewInt(100), LastSettledAt: past, LeaseCount: 1, ExhaustedAt: &future},
+					},
+				},
+			},
+			blockTime: now,
+			expectErr: true,
+			errMsg:    "exhausted_at",
+		},
+		{
+			name: "valid - stream timestamps exactly at block time",
+			genesis: &types.GenesisState{
+				Params: types.DefaultParams(),
+				Streams: []types.Stream{
+					{
+						ProviderUuid: "01912345-6789-7abc-8def-0123456789ac",
+						Tenant:       tenant,
+						Denom:        testDenom,
+						State:        types.StreamState{Rate: math.NewInt(100), LastSettledAt: now, LeaseCount: 1, ExhaustedAt: &now},
+					},
+				},
+			},
+			blockTime: now,
+			expectErr: false,
 		},
 		{
 			name: "invalid - created_at in the future",
@@ -2025,9 +2221,8 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     future,
-						LastSettledAt: past,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: future,
 					},
 				},
 			},
@@ -2047,10 +2242,9 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_CLOSED,
-						CreatedAt:     past,
-						LastSettledAt: past,
-						ClosedAt:      &future,
+						State:     types.LEASE_STATE_CLOSED,
+						CreatedAt: past,
+						ClosedAt:  &future,
 					},
 				},
 			},
@@ -2070,10 +2264,9 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_CLOSED,
-						CreatedAt:     past,
-						LastSettledAt: closedAt,
-						ClosedAt:      &closedAt,
+						State:     types.LEASE_STATE_CLOSED,
+						CreatedAt: past,
+						ClosedAt:  &closedAt,
 					},
 				},
 			},
@@ -2092,9 +2285,8 @@ func TestGenesisState_ValidateWithBlockTime(t *testing.T) {
 						Items: []types.LeaseItem{
 							{SkuUuid: "01912345-6789-7abc-8def-0123456789ad", Quantity: 1, LockedPrice: sdk.NewCoin(testDenom, math.NewInt(100))},
 						},
-						State:         types.LEASE_STATE_ACTIVE,
-						CreatedAt:     now,
-						LastSettledAt: now,
+						State:     types.LEASE_STATE_ACTIVE,
+						CreatedAt: now,
 					},
 				},
 			},
